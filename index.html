@@ -13,6 +13,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,800;1,700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 
     <style>
         /* ============================================================
@@ -995,15 +996,27 @@
                             </div>
 
                             <div class="bg-white/60 p-4 rounded-xl border border-gray-100 space-y-4">
-                                <input type="text" id="p-img"
-                                    class="w-full bg-transparent outline-none text-sm font-semibold" value="img/"
-                                    placeholder="Image Path 1">
-                                <input type="text" id="p-img2"
-                                    class="w-full bg-transparent outline-none text-sm font-semibold" value="img/"
-                                    placeholder="Image Path 2">
-                                <input type="text" id="p-img3"
-                                    class="w-full bg-transparent outline-none text-sm font-semibold" value="img/"
-                                    placeholder="Image Path 3">
+                                <div class="flex gap-2">
+                                    <input type="text" id="p-img"
+                                        class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
+                                        placeholder="Image Path 1">
+                                    <button onclick="cloudinaryUpload('p-img')"
+                                        class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input type="text" id="p-img2"
+                                        class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
+                                        placeholder="Image Path 2">
+                                    <button onclick="cloudinaryUpload('p-img2')"
+                                        class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input type="text" id="p-img3"
+                                        class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
+                                        placeholder="Image Path 3">
+                                    <button onclick="cloudinaryUpload('p-img3')"
+                                        class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
+                                </div>
                             </div>
                             <input type="text" id="p-keywords" class="admin-input mt-4 !bg-white"
                                 placeholder="Search Keywords (Secret - Hidden from customers)">
@@ -1021,7 +1034,12 @@
                             </h3>
                             <input type="hidden" id="edit-cat-id">
                             <input type="text" id="c-name" class="admin-input" placeholder="Category Title">
-                            <input type="text" id="c-img" class="admin-input" value="img/" placeholder="Icon Path">
+                            <div class="flex gap-2 items-center">
+                                <input type="text" id="c-img" class="admin-input flex-1" value="img/"
+                                    placeholder="Icon Path">
+                                <button onclick="cloudinaryUpload('c-img')"
+                                    class="text-[8px] font-black uppercase px-4 py-4 bg-gray-100 rounded-xl hover:bg-black hover:text-white transition-all">Upload</button>
+                            </div>
                             <button onclick="saveCategory()" id="c-save-btn"
                                 class="w-full bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2 mt-4">Sync
                                 Category</button>
@@ -1094,12 +1112,12 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
         const firebaseConfig = {
-            apiKey: "AIzaSyBzAGimDQCeuV4oMEQhhUBH8tbsQjBf9hc",
-            authDomain: "cataloguedata-9b2be.firebaseapp.com",
-            projectId: "cataloguedata-9b2be",
-            storageBucket: "cataloguedata-9b2be.firebasestorage.app",
-            messagingSenderId: "191169887154",
-            appId: "1:191169887154:web:08319d5f3898ed22db02ab"
+            apiKey: "AIzaSyAggNtKyGHlnjhx8vwbZFL5aM98awBt6Sw",
+            authDomain: "speed-catalogue.firebaseapp.com",
+            projectId: "speed-catalogue",
+            storageBucket: "speed-catalogue.firebasestorage.app",
+            messagingSenderId: "84589409246",
+            appId: "1:84589409246:web:124e25b09ba54dc9e3e34f"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -2033,6 +2051,27 @@
 
             if (document.getElementById('admin-search')) document.getElementById('admin-search').value = "";
             if (document.getElementById('admin-cat-filter')) document.getElementById('admin-cat-filter').value = "all";
+        };
+
+        window.cloudinaryUpload = (fieldId) => {
+            const widget = cloudinary.createUploadWidget({
+                cloudName: 'dj96idpqc',
+                uploadPreset: 'speed_preset',
+                sources: ['local', 'url', 'camera'],
+                showAdvancedOptions: false,
+                cropping: false,
+                multiple: false,
+                defaultSource: 'local',
+                styles: {
+                    palette: { window: '#FFFFFF', windowBorder: '#90A0B3', tabIcon: '#000000', menuIcons: '#5A616A', textDark: '#000000', textLight: '#FFFFFF', link: '#000000', action: '#111111', inactiveTabIcon: '#0E2F5A', error: '#F44235', inProgress: '#0078FF', complete: '#20B832', sourceBg: '#E4EBF1' }
+                }
+            }, (error, result) => {
+                if (!error && result && result.event === "success") {
+                    document.getElementById(fieldId).value = result.info.secure_url;
+                    showToast("Image Uploaded!");
+                }
+            });
+            widget.open();
         };
 
         function showToast(msg) {
