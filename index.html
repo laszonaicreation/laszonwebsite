@@ -1779,10 +1779,78 @@
                 try {
                     const data = JSON.parse(e.target.result);
                     showToast("Restoring... Please Wait");
-                    if (data.categories) { for (const cat of data.categories) { const { id, ...cleanCat } = cat; await addDoc(catCol, cleanCat); } }
-                    if (data.products) { for (const prod of data.products) { const { id, ...cleanProd } = prod; await addDoc(prodCol, cleanProd); } }
-                    showToast("Restore Successful!"); refreshData();
-                } catch (err) { showToast("Import Failed"); }
+
+                    // 1. Map old IDs to Names from the backup file
+                    const catOldIdToName = {};
+                    if (data.categories) {
+                        data.categories.forEach(c => { if (c.id) catOldIdToName[c.id] = c.name; });
+                    }
+
+                    // 2. Handle/Create Categories & Build Name to New ID Map
+                    if (data.categories) {
+                        for (const cat of data.categories) {
+                            const exists = DATA.c.find(c => c.name === cat.name);
+                            if (!exists) {
+                                const cleanCat = { name: cat.name || "", img: cat.img || cat.iconUrl || "img/" };
+                                const newDoc = await addDoc(catCol, cleanCat);
+                                // Add to a temp list so we can map right away
+                                DATA.c.push({ id: newDoc.id, ...cleanCat });
+                            }
+                        }
+                    }
+
+                    // Build the final mapping: Name -> Current/New ID
+                    const nameToNewId = {};
+                    DATA.c.forEach(c => { nameToNewId[c.name] = c.id; });
+
+                    // 3. Handle Products
+                    if (data.products) {
+                        for (const p of data.products) {
+                            // Find the NEW Category ID
+                            let finalCatId = "";
+                            const oldCatName = catOldIdToName[p.catId];
+                            if (oldCatName && nameToNewId[oldCatName]) {
+                                finalCatId = nameToNewId[oldCatName];
+                            } else if (p.catId && nameToNewId[p.catId]) {
+                                // Fallback if catId in backup was already a name or matches exactly
+                                finalCatId = nameToNewId[p.catId];
+                            }
+
+                            // Duplicate Check (Same Name + Same NEW Category = Duplicate)
+                            const isDuplicate = DATA.p.some(ep => ep.name === p.name && ep.catId === finalCatId);
+                            if (isDuplicate) continue;
+
+                            const cleanProd = {
+                                name: p.name || "",
+                                price: p.price || "",
+                                catId: finalCatId,
+                                desc: p.desc || p.description || "",
+                                size: p.size || (p.specs ? p.specs.size : ""),
+                                material: p.material || (p.specs ? p.specs.material : ""),
+                                inStock: p.inStock !== undefined ? p.inStock : (p.stockStatus !== "outofstock"),
+                                isPinned: p.isPinned || false,
+                                updatedAt: p.updatedAt || Date.now()
+                            };
+
+                            if (p.images && Array.isArray(p.images)) {
+                                cleanProd.img = p.images[0] || "img/";
+                                cleanProd.img2 = p.images[1] || "img/";
+                                cleanProd.img3 = p.images[2] || "img/";
+                            } else {
+                                cleanProd.img = p.img || "img/";
+                                cleanProd.img2 = p.img2 || "img/";
+                                cleanProd.img3 = p.img3 || "img/";
+                            }
+
+                            await addDoc(prodCol, cleanProd);
+                        }
+                    }
+                    showToast("Restore Successful!");
+                    refreshData();
+                } catch (err) {
+                    console.error(err);
+                    showToast("Import Failed");
+                }
             };
             reader.readAsText(file);
         };
