@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <!-- UI UPDATE: 2025-12-29 20:35 -->
+    <!-- UI UPDATE: 2026-01-03 17:45 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Speed Gifts | Premium Boutique</title>
 
@@ -1739,7 +1739,7 @@
                 const universalBackup = {
                     metadata: {
                         source: "Speed Gifts Boutique UI",
-                        version: "2.5.0",
+                        version: "2.6.0",
                         exportDate: new Date().toISOString(),
                         schema: {
                             products: ["id", "name", "price", "catId", "stockStatus", "size", "material", "description", "images"]
@@ -1783,15 +1783,16 @@
                     // 1. Map old IDs to Names from the backup file
                     const catOldIdToName = {};
                     if (data.categories) {
-                        data.categories.forEach(c => { if (c.id) catOldIdToName[c.id] = c.name; });
+                        data.categories.forEach(c => { if (c.id) catOldIdToName[c.id] = (c.name || "").trim(); });
                     }
 
                     // 2. Handle/Create Categories & Build Name to New ID Map
                     if (data.categories) {
                         for (const cat of data.categories) {
-                            const exists = DATA.c.find(c => c.name === cat.name);
+                            const trimmedName = (cat.name || "").trim();
+                            const exists = DATA.c.find(c => c.name.trim() === trimmedName);
                             if (!exists) {
-                                const cleanCat = { name: cat.name || "", img: cat.img || cat.iconUrl || "img/" };
+                                const cleanCat = { name: trimmedName, img: cat.img || cat.iconUrl || "img/" };
                                 const newDoc = await addDoc(catCol, cleanCat);
                                 // Add to a temp list so we can map right away
                                 DATA.c.push({ id: newDoc.id, ...cleanCat });
@@ -1799,9 +1800,9 @@
                         }
                     }
 
-                    // Build the final mapping: Name -> Current/New ID
+                    // Build the final mapping: Trimmed Name -> Current/New ID
                     const nameToNewId = {};
-                    DATA.c.forEach(c => { nameToNewId[c.name] = c.id; });
+                    DATA.c.forEach(c => { nameToNewId[c.name.trim()] = c.id; });
 
                     // 3. Handle Products
                     if (data.products) {
@@ -1816,8 +1817,14 @@
                                 finalCatId = nameToNewId[p.catId];
                             }
 
-                            // Duplicate Check (Same Name + Same NEW Category = Duplicate)
-                            const isDuplicate = DATA.p.some(ep => ep.name === p.name && ep.catId === finalCatId);
+                            const pImg = (p.images && p.images[0]) || p.img || "img/";
+
+                            // Refined Duplicate Check (Name + Category + Primary Image)
+                            const isDuplicate = DATA.p.some(ep =>
+                                ep.name === p.name &&
+                                ep.catId === finalCatId &&
+                                (ep.img === pImg)
+                            );
                             if (isDuplicate) continue;
 
                             const cleanProd = {
@@ -1825,8 +1832,8 @@
                                 price: p.price || "",
                                 catId: finalCatId,
                                 desc: p.desc || p.description || "",
-                                size: p.size || (p.specs ? p.specs.size : ""),
-                                material: p.material || (p.specs ? p.specs.material : ""),
+                                size: (p.specs ? p.specs.size : (p.size || "")),
+                                material: (p.specs ? p.specs.material : (p.material || "")),
                                 inStock: p.inStock !== undefined ? p.inStock : (p.stockStatus !== "outofstock"),
                                 isPinned: p.isPinned || false,
                                 updatedAt: p.updatedAt || Date.now()
