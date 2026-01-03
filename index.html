@@ -564,6 +564,41 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
         }
 
+        .drop-zone {
+            transition: all 0.3s ease;
+            position: relative;
+            background: #fff;
+            border: 2px dashed #eee;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drop-zone.dragging {
+            background: #f0f9ff !important;
+            border: 2px dashed #3b82f6 !important;
+            transform: scale(1.02);
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.1);
+        }
+
+        .drop-zone.uploading::after {
+            content: 'Uploading...';
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #3b82f6;
+            z-index: 10;
+            border-radius: inherit;
+        }
+
         /* NEW ADMIN LIST STYLING */
         #admin-product-list-container {
             max-height: 600px;
@@ -996,21 +1031,24 @@
                             </div>
 
                             <div class="bg-white/60 p-4 rounded-xl border border-gray-100 space-y-4">
-                                <div class="flex gap-2">
+                                <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
+                                    ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img')">
                                     <input type="text" id="p-img"
                                         class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
                                         placeholder="Image Path 1">
                                     <button onclick="cloudinaryUpload('p-img')"
                                         class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
                                 </div>
-                                <div class="flex gap-2">
+                                <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
+                                    ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img2')">
                                     <input type="text" id="p-img2"
                                         class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
                                         placeholder="Image Path 2">
                                     <button onclick="cloudinaryUpload('p-img2')"
                                         class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
                                 </div>
-                                <div class="flex gap-2">
+                                <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
+                                    ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img3')">
                                     <input type="text" id="p-img3"
                                         class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
                                         placeholder="Image Path 3">
@@ -1022,9 +1060,14 @@
                                 placeholder="Search Keywords (Secret - Hidden from customers)">
                             <textarea id="p-desc" class="admin-input h-32 py-4 resize-none"
                                 placeholder="Product Description"></textarea>
-                            <button onclick="saveProduct()" id="p-save-btn"
-                                class="w-full bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2 mt-4">Sync
-                                Product</button>
+                            <div class="flex gap-4 mt-4">
+                                <button onclick="resetForm()"
+                                    class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear
+                                    Form</button>
+                                <button onclick="saveProduct()" id="p-save-btn"
+                                    class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
+                                    Product</button>
+                            </div>
                         </div>
                     </div>
                     <!-- Category Section -->
@@ -1034,15 +1077,22 @@
                             </h3>
                             <input type="hidden" id="edit-cat-id">
                             <input type="text" id="c-name" class="admin-input" placeholder="Category Title">
-                            <div class="flex gap-2 items-center">
+                            <div class="drop-zone flex gap-2 items-center p-1 rounded-xl"
+                                ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+                                ondrop="handleDrop(event, 'c-img')">
                                 <input type="text" id="c-img" class="admin-input flex-1" value="img/"
                                     placeholder="Icon Path">
                                 <button onclick="cloudinaryUpload('c-img')"
                                     class="text-[8px] font-black uppercase px-4 py-4 bg-gray-100 rounded-xl hover:bg-black hover:text-white transition-all">Upload</button>
                             </div>
-                            <button onclick="saveCategory()" id="c-save-btn"
-                                class="w-full bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2 mt-4">Sync
-                                Category</button>
+                            <div class="flex gap-4 mt-4">
+                                <button onclick="resetForm()"
+                                    class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear
+                                    Form</button>
+                                <button onclick="saveCategory()" id="c-save-btn"
+                                    class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
+                                    Category</button>
+                            </div>
                         </div>
                     </div>
 
@@ -2128,8 +2178,59 @@
             if (document.getElementById('admin-cat-filter')) document.getElementById('admin-cat-filter').value = "all";
         };
 
+        window.handleDragOver = (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.add('dragging');
+        };
+
+        window.handleDragLeave = (e) => {
+            e.currentTarget.classList.remove('dragging');
+        };
+
+        window.handleDrop = async (e, fieldId) => {
+            e.preventDefault();
+            const zone = e.currentTarget;
+            zone.classList.remove('dragging');
+            const file = e.dataTransfer.files[0];
+            if (!file || !file.type.startsWith('image/')) return showToast("Please drop an image file.");
+
+            zone.classList.add('uploading');
+            try {
+                const url = await directCloudinaryUpload(file);
+                document.getElementById(fieldId).value = url;
+                showToast("Image Uploaded!");
+            } catch (err) {
+                showToast("Upload Failed.");
+            } finally {
+                zone.classList.remove('uploading');
+            }
+        };
+
+        async function directCloudinaryUpload(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', 'speed_preset');
+            formData.append('cloud_name', 'dxkcvm2yh');
+
+            const res = await fetch(`https://api.cloudinary.com/v1_1/dxkcvm2yh/image/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.secure_url) return data.secure_url;
+            throw new Error("Upload failed");
+        }
+
+        let cloudinaryWidget = null;
+        let cloudinaryTargetField = null;
+
         window.cloudinaryUpload = (fieldId) => {
-            const widget = cloudinary.createUploadWidget({
+            cloudinaryTargetField = fieldId;
+            if (cloudinaryWidget) {
+                cloudinaryWidget.open();
+                return;
+            }
+            cloudinaryWidget = cloudinary.createUploadWidget({
                 cloudName: 'dxkcvm2yh',
                 apiKey: '749457642941763',
                 uploadPreset: 'speed_preset',
@@ -2143,11 +2244,11 @@
                 }
             }, (error, result) => {
                 if (!error && result && result.event === "success") {
-                    document.getElementById(fieldId).value = result.info.secure_url;
+                    document.getElementById(cloudinaryTargetField).value = result.info.secure_url;
                     showToast("Image Uploaded!");
                 }
             });
-            widget.open();
+            cloudinaryWidget.open();
         };
 
         function showToast(msg) {
