@@ -179,6 +179,9 @@ async function refreshData(isNavigationOnly = false) {
                     const pinA = a.isPinned ? 1 : 0;
                     const pinB = b.isPinned ? 1 : 0;
                     if (pinA !== pinB) return pinB - pinA;
+                    if (a.isPinned && b.isPinned) {
+                        return (a.pinnedAt || 0) - (b.pinnedAt || 0);
+                    }
                     return (b.updatedAt || 0) - (a.updatedAt || 0);
                 });
 
@@ -226,13 +229,30 @@ window.handleLogoClick = () => {
     clicks++; lastClickTime = now;
     if (clicks >= 5) {
         const btn = document.getElementById('admin-entry-btn');
+        const hideBtn = document.getElementById('admin-hide-btn');
         if (btn) {
-            btn.classList.toggle('hidden');
-            showToast(btn.classList.contains('hidden') ? "Dashboard Hidden" : "Dashboard Unlocked");
+            btn.classList.remove('hidden');
+            if (hideBtn) hideBtn.classList.remove('hidden');
+            showToast("Dashboard Unlocked");
+            renderHome(); // Re-render to show pin icons
         }
         clicks = 0;
+    } else {
+        // Stability: Only navigate home if we're not already viewing the main collection
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('p') || urlParams.has('s') || state.filter !== 'all' || state.search !== '') {
+            goBackToHome(false);
+        }
     }
-    goBackToHome(false);
+};
+
+window.hideDashboardButton = () => {
+    const btn = document.getElementById('admin-entry-btn');
+    const hideBtn = document.getElementById('admin-hide-btn');
+    if (btn) btn.classList.add('hidden');
+    if (hideBtn) hideBtn.classList.add('hidden');
+    showToast("Dashboard Hidden");
+    renderHome(); // Re-render to hide pin icons
 };
 
 window.goBackToHome = (forceReset = false) => {
@@ -307,17 +327,23 @@ function renderHome() {
             if (categorySelector) categorySelector.classList.remove('hidden');
 
             let cHtml = `<div class="category-item ${state.filter === 'all' ? 'active' : ''}" onclick="applyFilter('all', event)"><div class="category-img-box flex items-center justify-center bg-gray-50 text-[10px] font-black text-gray-300">All</div><p class="category-label">Explore</p></div>`;
+            const isAdminVisible = !document.getElementById('admin-entry-btn').classList.contains('hidden');
+
             let categories = [...DATA.c].sort((a, b) => {
                 const pinA = a.isPinned ? 1 : 0;
                 const pinB = b.isPinned ? 1 : 0;
-                return pinB - pinA;
+                if (pinA !== pinB) return pinB - pinA;
+                if (a.isPinned && b.isPinned) {
+                    return (a.pinnedAt || 0) - (b.pinnedAt || 0);
+                }
+                return 0;
             });
 
             categories.forEach(c => {
                 cHtml += `<div class="category-item ${state.filter === c.id ? 'active' : ''}" onclick="applyFilter('${c.id}', event)">
                     <div class="category-img-box">
                         <img src="${c.img}" onerror="this.src='https://placehold.co/100x100?text=Gift'">
-                        ${c.isPinned ? '<div class="absolute -top-1 -right-1 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm"><i class="fa-solid fa-thumbtack text-[6px]"></i></div>' : ''}
+                        ${c.isPinned && isAdminVisible ? '<div class="absolute -top-1 -right-1 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm"><i class="fa-solid fa-thumbtack text-[6px]"></i></div>' : ''}
                     </div>
                     <p class="category-label truncate px-1 w-full">${c.name}</p>
                 </div>`;
@@ -551,7 +577,8 @@ window.saveCategory = async () => {
     const data = {
         name: document.getElementById('c-name')?.value,
         img: document.getElementById('c-img')?.value,
-        isPinned: document.getElementById('c-pinned')?.checked || false
+        isPinned: document.getElementById('c-pinned')?.checked || false,
+        pinnedAt: document.getElementById('c-pinned')?.checked ? (DATA.c.find(c => c.id === id)?.pinnedAt || Date.now()) : null
     };
     if (!data.name) return showToast("Name required");
     if (btn) { btn.disabled = true; btn.innerText = "Syncing..."; }
