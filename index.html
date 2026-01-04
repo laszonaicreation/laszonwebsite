@@ -866,6 +866,12 @@
         <p class="mt-6 text-[10px] font-black uppercase tracking-[0.25em] text-gray-400 animate-pulse">Loading Speed
             Gifts Catalogue</p>
     </div>
+    <script>
+        // Instant hide for shared links
+        if (window.location.search.includes('p=') || window.location.search.includes('s=')) {
+            document.getElementById('loader').style.display = 'none';
+        }
+    </script>
 
     <main id="app" class="max-w-7xl mx-auto px-5 pt-4 pb-48 min-h-screen">
         <!-- Unified App Container -->
@@ -1227,14 +1233,14 @@
             refreshData(true);
         };
 
-        // GLOBAL SAFETY: Hide loader no matter what after 6 seconds
+        // GLOBAL SAFETY: Hide loader no matter what after 4 seconds
         setTimeout(() => {
             const loader = document.getElementById('loader');
             if (loader && loader.style.display !== 'none') {
                 console.warn("Safety loader hide triggered.");
                 loader.style.display = 'none';
             }
-        }, 6000);
+        }, 4000);
 
         async function loadWishlist() {
             if (!state.user) return;
@@ -1314,42 +1320,49 @@
 
                 const loader = document.getElementById('loader');
                 if (loader) {
-                    const safetyTimer = setTimeout(() => { loader.style.display = 'none'; }, 5000);
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const isDirectLink = urlParams.has('p') || urlParams.has('s');
 
-                    // Priority 1: Category icons (Necessary for navigation)
-                    const iconsToLoad = DATA.c.map(c => c.img).filter(u => u && u !== 'img/').slice(0, 10);
+                    if (isDirectLink) {
+                        loader.style.display = 'none';
+                    } else {
+                        const safetyTimer = setTimeout(() => { loader.style.display = 'none'; }, 4000);
 
-                    // Priority 2: Top products for current state (Accounting for current filters)
-                    const stockFilter = (items) => items.filter(p => p.inStock !== false);
-                    let filteredForPreload = [];
-                    if (state.selectionId) filteredForPreload = DATA.p.filter(p => state.selected.includes(p.id));
-                    else if (state.filter === 'wishlist') filteredForPreload = DATA.p.filter(p => state.wishlist.includes(p.id));
-                    else if (state.filter !== 'all') filteredForPreload = stockFilter(DATA.p.filter(p => p.catId === state.filter));
-                    else filteredForPreload = stockFilter(DATA.p);
+                        // Priority 1: Category icons (Necessary for navigation)
+                        const iconsToLoad = DATA.c.map(c => c.img).filter(u => u && u !== 'img/').slice(0, 10);
 
-                    // Sort matching renderHome
-                    filteredForPreload.sort((a, b) => {
-                        const pinA = a.isPinned ? 1 : 0;
-                        const pinB = b.isPinned ? 1 : 0;
-                        if (pinA !== pinB) return pinB - pinA;
-                        return (b.updatedAt || 0) - (a.updatedAt || 0);
-                    });
+                        // Priority 2: Top products for current state (Accounting for current filters)
+                        const stockFilter = (items) => items.filter(p => p.inStock !== false);
+                        let filteredForPreload = [];
+                        if (state.selectionId) filteredForPreload = DATA.p.filter(p => state.selected.includes(p.id));
+                        else if (state.filter === 'wishlist') filteredForPreload = DATA.p.filter(p => state.wishlist.includes(p.id));
+                        else if (state.filter !== 'all') filteredForPreload = stockFilter(DATA.p.filter(p => p.catId === state.filter));
+                        else filteredForPreload = stockFilter(DATA.p);
 
-                    const prodsToLoad = filteredForPreload.slice(0, 8).map(p => p.img).filter(u => u && u !== 'img/');
-                    const allToPreload = [...new Set([...prodsToLoad, ...iconsToLoad])];
+                        // Sort matching renderHome
+                        filteredForPreload.sort((a, b) => {
+                            const pinA = a.isPinned ? 1 : 0;
+                            const pinB = b.isPinned ? 1 : 0;
+                            if (pinA !== pinB) return pinB - pinA;
+                            return (b.updatedAt || 0) - (a.updatedAt || 0);
+                        });
 
-                    if (allToPreload.length > 0) {
-                        // High priority preloading for the top products
-                        await Promise.all(allToPreload.map(url => new Promise((resolve) => {
-                            const img = new Image();
-                            img.src = url;
-                            img.onload = resolve;
-                            img.onerror = resolve;
-                            setTimeout(resolve, 1500); // Shorter timeout to avoid blocking UI
-                        })));
+                        const prodsToLoad = filteredForPreload.slice(0, 8).map(p => p.img).filter(u => u && u !== 'img/');
+                        const allToPreload = [...new Set([...prodsToLoad, ...iconsToLoad])];
+
+                        if (allToPreload.length > 0) {
+                            // High priority preloading for the top products
+                            await Promise.all(allToPreload.map(url => new Promise((resolve) => {
+                                const img = new Image();
+                                img.src = url;
+                                img.onload = resolve;
+                                img.onerror = resolve;
+                                setTimeout(resolve, 800); // reduced timeout for faster opening
+                            })));
+                        }
+                        clearTimeout(safetyTimer);
+                        loader.style.display = 'none';
                     }
-                    clearTimeout(safetyTimer);
-                    loader.style.display = 'none';
                 }
             } catch (err) {
                 console.error(err);
