@@ -249,22 +249,13 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 1.2s ease, opacity 0.5s ease;
+    transition: transform 1.2s ease, opacity 0.8s ease;
     opacity: 0;
+    will-change: opacity, transform;
 }
 
-.img-container img[src] {
+.img-container img.loaded {
     opacity: 1;
-}
-
-/* Smoothing image entry */
-img {
-    transition: opacity 0.5s ease;
-}
-
-img:not([src]),
-img[src=""] {
-    opacity: 0;
 }
 
 

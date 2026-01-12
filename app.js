@@ -161,12 +161,11 @@ async function refreshData(isNavigationOnly = false) {
             if (isDirectLink) {
                 loader.style.display = 'none';
             } else {
-                const safetyTimer = setTimeout(() => { loader.style.display = 'none'; }, 4000);
+                // HIDE LOADER IMMEDIATELY as soon as data (links) are ready
+                loader.style.display = 'none';
 
-                // Priority 1: Category icons (Necessary for navigation)
-                const iconsToLoad = DATA.c.map(c => c.img).filter(u => u && u !== 'img/').slice(0, 10);
-
-                // Priority 2: Top products for current state (Accounting for current filters)
+                // Preload in background (non-blocking)
+                const iconsToLoad = DATA.c.map(c => getOptimizedUrl(c.img)).filter(u => u && u !== 'img/').slice(0, 10);
                 const stockFilter = (items) => items.filter(p => p.inStock !== false);
                 let filteredForPreload = [];
                 if (state.selectionId) filteredForPreload = DATA.p.filter(p => state.selected.includes(p.id));
@@ -174,32 +173,21 @@ async function refreshData(isNavigationOnly = false) {
                 else if (state.filter !== 'all') filteredForPreload = stockFilter(DATA.p.filter(p => p.catId === state.filter));
                 else filteredForPreload = stockFilter(DATA.p);
 
-                // Sort matching renderHome
                 filteredForPreload.sort((a, b) => {
                     const pinA = a.isPinned ? 1 : 0;
                     const pinB = b.isPinned ? 1 : 0;
                     if (pinA !== pinB) return pinB - pinA;
-                    if (a.isPinned && b.isPinned) {
-                        return (a.pinnedAt || 0) - (b.pinnedAt || 0);
-                    }
                     return (b.updatedAt || 0) - (a.updatedAt || 0);
                 });
 
-                const prodsToLoad = filteredForPreload.slice(0, 8).map(p => p.img).filter(u => u && u !== 'img/');
+                const prodsToLoad = filteredForPreload.slice(0, 8).map(p => getOptimizedUrl(p.img)).filter(u => u && u !== 'img/');
                 const allToPreload = [...new Set([...prodsToLoad, ...iconsToLoad])];
 
-                if (allToPreload.length > 0) {
-                    // High priority preloading for the top products
-                    await Promise.all(allToPreload.map(url => new Promise((resolve) => {
-                        const img = new Image();
-                        img.src = url;
-                        img.onload = resolve;
-                        img.onerror = resolve;
-                        setTimeout(resolve, 800); // reduced timeout for faster opening
-                    })));
-                }
-                clearTimeout(safetyTimer);
-                loader.style.display = 'none';
+                // Fire and forget (don't await)
+                allToPreload.forEach(url => {
+                    const img = new Image();
+                    img.src = url;
+                });
             }
         }
     } catch (err) {
@@ -342,7 +330,7 @@ function renderHome() {
             categories.forEach(c => {
                 cHtml += `<div class="category-item ${state.filter === c.id ? 'active' : ''}" onclick="applyFilter('${c.id}', event)">
                     <div class="category-img-box">
-                        <img src="${c.img}" onerror="this.src='https://placehold.co/100x100?text=Gift'">
+                        <img src="${getOptimizedUrl(c.img)}" onerror="this.src='https://placehold.co/100x100?text=Gift'">
                         ${c.isPinned && isAdminVisible ? '<div class="absolute -top-1 -right-1 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm"><i class="fa-solid fa-thumbtack text-[6px]"></i></div>' : ''}
                     </div>
                     <p class="category-label truncate px-1 w-full">${c.name}</p>
@@ -436,7 +424,7 @@ function renderHome() {
             <div class="wish-btn shadow-sm" onclick="toggleWishlist(event, '${p.id}')"><i class="fa-solid fa-heart text-[10px]"></i></div>
             ${!state.selectionId && !state.filter.includes('wishlist') ? `<div class="select-btn shadow-sm" onclick="toggleSelect(event, '${p.id}')"><i class="fa-solid fa-check text-[10px]"></i></div>` : ''}
             <div class="img-container mb-4 shadow-sm">
-                <img src="${p.img}" 
+                <img src="${getOptimizedUrl(p.img)}" 
                      ${idx < 8 ? 'fetchpriority="high" loading="eager"' : 'fetchpriority="low" loading="lazy"'}
                      decoding="async"
                      onload="this.classList.add('loaded')"
@@ -500,12 +488,12 @@ window.viewDetail = (id, skipHistory = false) => {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">
         <div>
             <div class="zoom-img-container aspect-square" onmousemove="handleZoom(event, this)" onmouseleave="resetZoom(this)" onclick="openFullScreen('${p.img}')">
-                <img src="${p.img}" id="main-detail-img" class="w-full h-full object-cover" fetchpriority="high" loading="eager">
+                <img src="${getOptimizedUrl(p.img)}" id="main-detail-img" class="w-full h-full object-cover" fetchpriority="high" loading="eager">
             </div>
             <div class="thumb-grid justify-center lg:justify-start">
-                <div class="thumb-box active" onclick="switchImg('${p.img}', this)"><img src="${p.img}"></div>
-                ${p.img2 && p.img2 !== 'img/' ? `<div class="thumb-box" onclick="switchImg('${p.img2}', this)"><img src="${p.img2}"></div>` : ''}
-                ${p.img3 && p.img3 !== 'img/' ? `<div class="thumb-box" onclick="switchImg('${p.img3}', this)"><img src="${p.img3}"></div>` : ''}
+                <div class="thumb-box active" onclick="switchImg('${p.img}', this)"><img src="${getOptimizedUrl(p.img)}"></div>
+                ${p.img2 && p.img2 !== 'img/' ? `<div class="thumb-box" onclick="switchImg('${p.img2}', this)"><img src="${getOptimizedUrl(p.img2)}"></div>` : ''}
+                ${p.img3 && p.img3 !== 'img/' ? `<div class="thumb-box" onclick="switchImg('${p.img3}', this)"><img src="${getOptimizedUrl(p.img3)}"></div>` : ''}
             </div>
         </div>
         <div class="py-2">
@@ -852,7 +840,7 @@ window.inquireOnWhatsApp = (id) => {
 window.switchImg = (src, el) => {
     const main = document.getElementById('main-detail-img');
     if (main) {
-        main.src = src;
+        main.src = getOptimizedUrl(src);
         // Update click handler for full-screen preview
         main.closest('.zoom-img-container')?.setAttribute('onclick', `openFullScreen('${src}')`);
     }
@@ -931,7 +919,7 @@ window.renderAdminUI = () => {
             pHtml += `
         <div class="admin-product-card group">
             <div class="admin-product-img-box">
-                <img src="${p.img}" alt="${p.name}">
+                <img src="${getOptimizedUrl(p.img)}" alt="${p.name}">
                 ${pinIcon}
                 <div class="admin-card-actions">
                     <button onclick="editProduct('${p.id}')" class="admin-action-btn" title="Edit Item">
@@ -959,7 +947,7 @@ window.renderAdminUI = () => {
     cList.innerHTML = DATA.c.map(c => `
 <div class="flex items-center gap-5 p-5 bg-gray-50 rounded-[2rem] border border-gray-100 relative">
     <div class="relative shrink-0">
-        <img src="${c.img}" class="w-14 h-14 rounded-full object-cover border-4 border-white shadow-sm" onerror="this.src='https://placehold.co/100x100?text=Icon'">
+        <img src="${getOptimizedUrl(c.img)}" class="w-14 h-14 rounded-full object-cover border-4 border-white shadow-sm" onerror="this.src='https://placehold.co/100x100?text=Icon'">
         ${c.isPinned ? '<div class="absolute -top-1 -right-1 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-lg"><i class="fa-solid fa-thumbtack text-[8px]"></i></div>' : ''}
     </div>
     <div class="flex-1 font-bold text-[13px] uppercase">${c.name}</div>
@@ -1144,6 +1132,13 @@ function showToast(msg) {
     const t = document.getElementById('toast'); if (!t) return;
     t.innerText = msg; t.style.display = 'block';
     setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+function getOptimizedUrl(url) {
+    if (!url || typeof url !== 'string' || !url.includes('cloudinary.com')) return url;
+    if (url.includes('f_auto,q_auto')) return url;
+    // Inject f_auto,q_auto after /upload/
+    return url.replace('/upload/', '/upload/f_auto,q_auto/');
 }
 
 startSync();
