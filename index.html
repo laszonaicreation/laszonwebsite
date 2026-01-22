@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <!-- UI UPDATE: 2026-01-03 17:45 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Speed Gifts | Premium Boutique</title>
+    <title>Laszon Gifts | Premium Boutique</title>
 
     <link rel="preconnect" href="https://res.cloudinary.com">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="style.css?v=1768667174">
 </head>
 
 <body class="selection:bg-black selection:text-white">
@@ -33,144 +33,236 @@
     </div>
 
 
-    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-50">
-        <div class="max-w-7xl mx-auto px-5 h-16 md:h-20 flex items-center justify-between">
-            <div class="w-1/4 flex items-center gap-2">
-                <button id="admin-entry-btn"
-                    class="hidden bg-black text-white px-4 py-2 rounded-full text-[8px] font-bold tracking-widest uppercase"
-                    onclick="showAdminPanel()">
-                    Dashboard
+
+
+    <!-- MOBILE BOTTOM NAV -->
+    <div id="mobile-nav"
+        class="md:hidden fixed bottom-6 left-6 right-6 z-50 glass-panel border border-black/[0.08] rounded-[2.5rem] h-16 flex items-center justify-around px-2 shadow-[0_20px_50px_rgba(0,0,0,0.15)] backdrop-blur-xl">
+        <button onclick="applyFilter('all')"
+            class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
+            <i class="fa-solid fa-house text-lg"></i>
+            <span class="text-[7px] font-black uppercase tracking-widest">Home</span>
+        </button>
+        <button onclick="document.getElementById('customer-search').focus()"
+            class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
+            <i class="fa-solid fa-magnifying-glass text-lg"></i>
+            <span class="text-[7px] font-black uppercase tracking-widest">Explore</span>
+        </button>
+        <button onclick="toggleWishlistSidebar()"
+            class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
+            <i class="fa-solid fa-heart text-lg"></i>
+            <span class="text-[7px] font-black uppercase tracking-widest">Saved</span>
+        </button>
+        <button onclick="document.getElementById('category-row')?.scrollIntoView({behavior:'smooth'})"
+            class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
+            <i class="fa-solid fa-shapes text-lg"></i>
+            <span class="text-[7px] font-black uppercase tracking-widest">Catalog</span>
+        </button>
+    </div>
+
+    <!-- MOBILE SIDEBAR (DRAWER) -->
+    <div id="mobile-sidebar"
+        class="fixed inset-0 z-[120] bg-black/40 backdrop-blur-md hidden opacity-0 transition-opacity duration-300"
+        onclick="toggleMobileSidebar()">
+        <div id="mobile-sidebar-container"
+            class="absolute top-0 left-[-300px] w-[300px] h-full bg-white shadow-2xl transition-all duration-400 ease-out overflow-hidden"
+            onclick="event.stopPropagation()">
+
+            <!-- PANEL 1: MAIN MENU -->
+            <div id="sidebar-panel-main" class="absolute inset-0 p-8 flex flex-col transition-transform duration-300">
+                <div class="flex items-center justify-between mb-10">
+                    <h2 class="brand-logo text-xl">LASZON</h2>
+                    <button onclick="toggleMobileSidebar()"
+                        class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <nav class="flex flex-col">
+                    <a href="#" onclick="applyFilter('all'); toggleMobileSidebar()" class="sidebar-nav-link">
+                        <i class="fa-solid fa-house"></i> Home
+                    </a>
+                    <button onclick="switchSidebarPanel('categories')"
+                        class="sidebar-nav-link w-full text-left flex justify-between items-center group">
+                        <span class="flex items-center gap-3">
+                            <i class="fa-solid fa-shapes"></i> Categories
+                        </span>
+                        <i
+                            class="fa-solid fa-chevron-right text-[10px] opacity-30 group-hover:opacity-100 transition-all"></i>
+                    </button>
+                    <a href="#" onclick="toggleWishlistSidebar(); toggleMobileSidebar()" class="sidebar-nav-link">
+                        <i class="fa-solid fa-heart"></i> My Favorites
+                    </a>
+                    <a href="#" onclick="toggleCart(); toggleMobileSidebar()" class="sidebar-nav-link">
+                        <i class="fa-solid fa-cart-shopping"></i> My Cart
+                    </a>
+                    <a href="#" onclick="handleUserIconClick(); toggleMobileSidebar()"
+                        class="sidebar-nav-link border-none">
+                        <i class="fa-solid fa-user"></i> Account
+                    </a>
+                </nav>
+                <div class="mt-auto pt-10 border-t border-gray-50">
+                    <p class="text-[9px] font-black uppercase tracking-widest text-gray-300">Premium Boutique Experience
+                    </p>
+                </div>
+            </div>
+
+            <!-- PANEL 2: CATEGORIES -->
+            <div id="sidebar-panel-categories"
+                class="absolute inset-0 p-8 flex flex-col translate-x-full transition-transform duration-300">
+                <div class="flex items-center gap-4 mb-10">
+                    <button onclick="switchSidebarPanel('main')"
+                        class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-[#333333]">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <h2 class="text-xs font-black uppercase tracking-widest">Categories</h2>
+                </div>
+                <div id="mobile-sidebar-categories-list" class="flex flex-col overflow-y-auto no-scrollbar pb-10">
+                    <!-- Categories will be injected here -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <main id="app" class="max-w-7xl mx-auto px-3 md:px-5 pt-4 pb-48 min-h-screen bg-white">
+        <!-- BRAND HEADER -->
+        <div id="static-header" class="flex items-center justify-between mb-8 px-2 fade-in pt-4">
+            <!-- MOBILE LEFT: MENU & LOGIN -->
+            <div class="header-left md:hidden">
+                <button onclick="toggleMobileSidebar()" class="header-icon-btn">
+                    <i class="fa-solid fa-bars-staggered"></i>
                 </button>
-                <button id="admin-hide-btn"
-                    class="hidden bg-gray-50 text-gray-400 w-8 h-8 rounded-full text-[10px] font-bold flex items-center justify-center hover:bg-black hover:text/white transition-all"
-                    onclick="window.hideDashboardButton()">
-                    <i class="fa-solid fa-xmark text-[10px]"></i>
+                <button onclick="handleUserIconClick()" class="header-icon-btn">
+                    <i class="fa-solid fa-user"></i>
                 </button>
             </div>
-            <div class="flex-1 text-center">
-                <h1 class="brand-logo cursor-pointer select-none uppercase truncate leading-none" id="main-logo"
-                    onclick="handleLogoClick()">
-                    SPEED GIFTS
-                </h1>
-            </div>
-            <div class="w-1/4 flex justify-end items-center">
-                <!-- WISHLIST NAV BUTTON -->
-                <button onclick="applyFilter('wishlist')"
-                    class="relative flex items-center gap-2 text-gray-400 hover:text-red-500 transition-all group">
-                    <span
-                        class="hidden md:block text-[9px] font-black tracking-widest uppercase group-hover:text-red-500 transition-all">Favorites</span>
-                    <div class="relative">
-                        <i class="fa-solid fa-heart text-xl"></i>
-                        <span id="nav-wishlist-count"
-                            class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[7px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-white hidden">0</span>
+
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 mr-2">
+                    <button id="admin-entry-btn"
+                        class="hidden bg-[#333333] text-white px-3 py-2 rounded-full text-[8px] font-bold tracking-widest uppercase shadow-lg shadow-black/10"
+                        onclick="showAdminPanel()">Dashboard</button>
+                    <button id="admin-hide-btn"
+                        class="hidden bg-gray-50 text-gray-400 w-8 h-8 rounded-full text-[10px] font-bold flex items-center justify-center hover:bg-black hover:text-white transition-all border border-black/5"
+                        onclick="window.hideDashboardButton(event)">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <!-- LOGIC: Centered on mobile via CSS -->
+                <div class="flex items-center gap-3 cursor-pointer" onclick="handleLogoClick()">
+                    <div id="logo-container" class="flex items-center">
+                        <h1 class="brand-logo text-[#333333]">LASZON GIFTS</h1>
                     </div>
+                </div>
+            </div>
+
+            <!-- DESKTOP RIGHT (and Mobile Right for Wishlist/Cart) -->
+            <div class="header-right flex items-center gap-4 text-[#333333]">
+                <button onclick="toggleWishlistSidebar()" class="header-icon-btn relative">
+                    <i class="fa-solid fa-heart text-base"></i>
+                    <span id="nav-wishlist-count"
+                        class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[7px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-white hidden">0</span>
                 </button>
+                <button onclick="toggleCart()" class="header-icon-btn relative">
+                    <i class="fa-solid fa-cart-shopping text-base"></i>
+                    <span id="nav-cart-count"
+                        class="absolute -top-1.5 -right-1.5 bg-[#333333] text-white text-[7px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-white hidden">0</span>
+                </button>
+                <!-- Hidden on mobile user icon (moved to left) -->
+                <div id="user-btn" onclick="handleUserIconClick()"
+                    class="header-icon-btn hidden md:flex cursor-pointer transition-all">
+                    <i class="fa-solid fa-user text-xs"></i>
+                </div>
             </div>
         </div>
-    </nav>
 
-    <div id="loader" class="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center">
-        <div class="w-6 h-6 border-2 border-gray-100 border-t-black rounded-full animate-spin"></div>
-        <p class="mt-6 text-[10px] font-black uppercase tracking-[0.25em] text-gray-400 animate-pulse">Loading Speed
-            Gifts Catalogue</p>
-    </div>
-    <script>
-        // Instant hide for shared links
-        if (window.location.search.includes('p=') || window.location.search.includes('s=')) {
-            document.getElementById('loader').style.display = 'none';
-        }
-    </script>
+        <!-- 2. SEARCH BAR BELOW HEADER -->
+        <div id="customer-search-container" class="mt-4 mb-4 fade-in relative">
+            <div class="max-w-2xl mx-auto px-1">
+                <div class="relative group">
+                    <i
+                        class="fa-solid fa-magnifying-glass absolute left-5 top-1/2 -translate-y-1/2 text-black/60 text-sm"></i>
+                    <input type="text" id="customer-search" oninput="window.applyCustomerSearch(this.value)"
+                        class="w-full bg-white/50 border border-black/5 rounded-full py-4 pl-14 pr-14 text-[11px] font-bold text-black uppercase tracking-widest outline-none focus:bg-white focus:border-black transition-all shadow-inner-soft"
+                        placeholder="Search for exquisite gifts..." autocomplete="off">
+                </div>
+            </div>
+        </div>
 
-    <main id="app" class="max-w-7xl mx-auto px-5 pt-4 pb-48 min-h-screen">
-        <!-- Unified App Container -->
+        <div id="dynamic-main-content">
+            <!-- Loading Skeletons or Dynamic Content -->
+            <div class="animate-pulse space-y-8">
+                <!-- Slider Skeleton -->
+                <div class="h-32 bg-gray-50 rounded-[3rem] w-full mb-8"></div>
+                <!-- Categories Skeleton -->
+                <div class="flex gap-4 overflow-hidden">
+                    <div class="w-[72px] h-[72px] rounded-2xl bg-gray-50 shrink-0"></div>
+                    <div class="w-[72px] h-[72px] rounded-2xl bg-gray-50 shrink-0"></div>
+                    <div class="w-[72px] h-[72px] rounded-2xl bg-gray-50 shrink-0"></div>
+                    <div class="w-[72px] h-[72px] rounded-2xl bg-gray-50 shrink-0"></div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- Templates -->
     <div id="home-view-template" class="hidden">
-        <div id="customer-search-container" class="mb-10 fade-in relative">
-            <div class="max-w-2xl mx-auto z-[60]">
-                <!-- Search Input with its own relative wrapper to keep the icon fixed -->
-                <div class="relative group">
-                    <i
-                        class="fa-solid fa-magnifying-glass absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 text-sm transition-colors group-focus-within:text-black"></i>
-                    <input type="text" id="customer-search" oninput="window.applyCustomerSearch(this.value)"
-                        onfocus="window.showSearchSuggestions(true)" onblur="window.showSearchSuggestions(false)"
-                        class="w-full bg-white border border-gray-100 rounded-[2rem] py-5 pl-14 pr-14 text-[10px] md:text-[11px] font-bold uppercase tracking-widest outline-none focus:border-black transition-all shadow-[0_10px_30px_rgba(0,0,0,0.02)]"
-                        placeholder="Search our collection..." autocomplete="off">
-                    <!-- CLEAR SEARCH BUTTON -->
-                    <button id="clear-search-btn" onclick="window.clearCustomerSearch()"
-                        class="hidden absolute right-5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:text-black hover:bg-gray-100 transition-all">
-                        <i class="fa-solid fa-xmark text-sm"></i>
-                    </button>
-                </div>
 
-                <!-- TRENDING DROPDOWN - Now Relative to push content instead of overlapping -->
-                <div id="search-tags"
-                    class="hidden w-full mt-4 p-4 bg-gray-50/50 rounded-3xl border border-gray-100 transition-all duration-500 overflow-hidden">
-                    <p class="text-[8px] font-black uppercase tracking-[0.2em] text-gray-300 mb-3 px-1">Trending
-                        Searches</p>
-                    <div class="flex flex-wrap gap-2">
-                        <span onmousedown="window.applyCustomerSearch('Wood Engraving')"
-                            class="search-tag !bg-white">Wood Engraving</span>
-                        <span onmousedown="window.applyCustomerSearch('Rock Engraving')"
-                            class="search-tag !bg-white">Rock Engraving</span>
-                        <span onmousedown="window.applyCustomerSearch('Cushion')" class="search-tag !bg-white">Cushion
-                            Printing</span>
-                        <span onmousedown="window.applyCustomerSearch('Magic Mug')" class="search-tag !bg-white">Magic
-                            Mug</span>
-                    </div>
-                </div>
+        <!-- 3. HERO SLIDER ("The Art of Gifting") -->
+        <div id="hero-slider-wrapper" class="mb-6 fade-in px-1 overflow-hidden">
+            <div id="hero-slider-container" class="relative w-full rounded-[2rem] md:rounded-[3rem] overflow-hidden ">
+                <!-- Slider items will be injected here -->
+            </div>
+            <!-- Slider dots -->
+            <div id="slider-dots" class="flex justify-center gap-2 mt-4"></div>
+        </div>
+
+        <!-- 4. CATEGORY ROW -->
+        <div class="mb-4 fade-in">
+            <div id="category-row"
+                class="category-row no-scrollbar flex gap-2.5 overflow-x-auto pt-4 pb-12 items-center border-none px-1 scroll-smooth">
             </div>
         </div>
 
-        <div id="selection-header" class="hidden mb-10 fade-in">
-            <div class="flex flex-col gap-4 border-b border-gray-100 pb-8">
+        <div id="selection-header" class="hidden mb-12 fade-in">
+            <div class="flex flex-col gap-4 border-b border-black/5 pb-10">
                 <div class="space-y-1">
-                    <h2 class="text-xl font-black tracking-tight uppercase" id="view-title">Picked for you</h2>
-                    <p class="text-[12px] text-gray-400" id="view-subtitle">Exclusive items curated for your boutique
-                        experience.</p>
+                    <h2 class="text-2xl font-serif italic text-[#333333]" id="view-title">Picked for you</h2>
+                    <p class="text-[11px] font-bold uppercase tracking-widest text-black/30" id="view-subtitle">
+                        Curated for your boutique experience.</p>
                 </div>
                 <button onclick="goBackToHome(true)"
-                    class="text-[9px] font-bold uppercase tracking-widest px-6 py-3 bg-black text-white rounded-full shadow-lg self-start">View
+                    class="text-[9px] font-black uppercase tracking-widest px-8 py-4 bg-[#333333] text-white rounded-full shadow-2xl shadow-black/20 self-start active:scale-95 transition-all">View
                     All Products</button>
             </div>
         </div>
 
-        <div id="category-selector-container" class="mb-4 fade-in">
-            <p class="text-[10px] md:text-[11px] font-black uppercase tracking-[0.15em] text-gray-400 px-1">Select
-                Category</p>
-        </div>
+        <div class="flex justify-between items-center mb-8 px-2 fade-in">
+            <div class="space-y-1">
+                <h3 id="active-category-title" class="text-[10px] font-black uppercase tracking-[0.25em] text-black/30">
+                    Collections</h3>
+                <h3 id="active-category-title-mob" class="hidden"></h3>
+            </div>
 
-        <div class="category-scroll-container">
-            <div id="category-row"
-                class="no-scrollbar flex gap-4 overflow-x-auto py-8 items-center border-b border-gray-50 px-1 scroll-smooth"
-                onscroll="window.handleCategoryRowScroll(this)"></div>
-        </div>
-
-        <div class="desktop-select-actions flex justify-between items-center mb-6 hidden md:flex">
-            <h3 id="active-category-title"
-                class="text-[11px] font-black uppercase tracking-[0.15em] text-gray-400 px-1"></h3>
-            <button id="select-all-btn" onclick="toggleSelectAll()"
-                class="text-[8.5px] font-black uppercase tracking-widest py-2 px-4 rounded-full border border-gray-100 bg-gray-50 hover:bg-black hover:text-white transition-all text-gray-400">
-                Select All Visible
-            </button>
-        </div>
-
-        <div class="md:hidden mb-6 px-1 flex justify-between items-end">
-            <h3 id="active-category-title-mob" class="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
-            </h3>
-            <div class="flex items-center gap-2">
-                <i class="fa-solid fa-arrow-up-wide-short text-[10px] text-gray-300"></i>
-                <select id="price-sort-mob" onchange="window.applyPriceSort(this.value)"
-                    class="bg-transparent text-[10px] font-black uppercase tracking-widest text-gray-500 outline-none border-none">
-                    <option value="all">Sort</option>
-                    <option value="low">Price: Low-High</option>
-                    <option value="high">Price: High-Low</option>
-                </select>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-up-wide-short text-[10px] text-black/20"></i>
+                    <select id="price-sort-mob" onchange="window.applyPriceSort(this.value)"
+                        class="bg-transparent text-[10px] font-black uppercase tracking-widest text-black/60 outline-none border-none">
+                        <option value="all">Sort</option>
+                        <option value="low">Low-High</option>
+                        <option value="high">High-Low</option>
+                    </select>
+                </div>
+                <button id="select-all-btn" onclick="toggleSelectAll()"
+                    class="hidden md:block text-[8.5px] font-black uppercase tracking-widest py-3 px-6 rounded-full border border-black/5 bg-black/5 hover:bg-black hover:text-white transition-all text-black/80">
+                    Select Visible
+                </button>
             </div>
         </div>
 
-        <div id="product-grid" class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12 md:gap-x-8 md:gap-y-20"></div>
+        <div id="product-grid"
+            class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-2 gap-y-8 md:gap-x-10 md:gap-y-24"></div>
     </div>
 
     <div id="selection-bar">
@@ -186,182 +278,247 @@
     </div>
 
     <!-- Admin Panel -->
-    <div id="admin-panel" class="hidden fixed inset-0 z-[60] bg-white overflow-y-auto">
-        <div class="max-w-6xl mx-auto px-8 py-20">
-            <div class="flex justify-between items-center mb-16">
-                <div>
+    <div id="admin-panel" class="hidden fixed inset-0 z-[150] bg-white flex-col admin-panel-transition">
+        <!-- FIXED CLOSE BUTTON -->
+        <button onclick="hideAdminPanel()"
+            class="fixed top-8 right-8 z-[170] w-12 h-12 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-md text-gray-400 hover:text-black hover:bg-white transition-all shadow-xl border border-gray-100 active:scale-90">✕</button>
+
+        <div class="flex-1 overflow-y-auto w-full no-scrollbar">
+            <div class="max-w-6xl mx-auto px-6 md:px-8 py-20 pb-40">
+                <div class="mb-16">
                     <h2 class="text-3xl font-black tracking-tight uppercase">Workspace</h2>
                     <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Cloud Inventory
                         Manager</p>
                 </div>
-                <button onclick="hideAdminPanel()"
-                    class="w-12 h-12 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 hover:text-black transition-all">✕</button>
-            </div>
 
-            <div class="flex p-1 bg-gray-50 rounded-2xl mb-12 max-w-sm border border-gray-100 shadow-inner">
-                <button onclick="switchAdminTab('products')" id="tab-p"
-                    class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase transition-all bg-white shadow-xl">Products</button>
-                <button onclick="switchAdminTab('categories')" id="tab-c"
-                    class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Categories</button>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-16">
-                <div class="lg:col-span-5">
-                    <!-- Product Section -->
-                    <div id="admin-product-section" class="fade-in">
-                        <div class="bg-gray-50 p-8 rounded-[2rem] border border-gray-100 space-y-4 shadow-sm">
-                            <h3 id="p-form-title" class="text-[11px] font-black uppercase tracking-widest">Product
-                                Details</h3>
-                            <input type="hidden" id="edit-id">
-                            <input type="text" id="p-name" class="admin-input" placeholder="Item Name">
-                            <input type="text" id="p-price" class="admin-input" placeholder="Price (AED 50)">
-                            <select id="p-cat-id" class="admin-input cursor-pointer">
-                                <option value="">Select Category</option>
-                            </select>
-
-                            <div class="grid grid-cols-2 gap-3">
-                                <input type="text" id="p-size" class="admin-input" placeholder="Size">
-                                <input type="text" id="p-material" class="admin-input" placeholder="Material">
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <label
-                                    class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
-                                    <input type="checkbox" id="p-stock" class="w-4 h-4 accent-black" checked>
-                                    <span
-                                        class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Available
-                                        in
-                                        Stock</span>
-                                </label>
-                                <label
-                                    class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
-                                    <input type="checkbox" id="p-pinned" class="w-4 h-4 accent-black">
-                                    <span class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pin to
-                                        Top
-                                        (Always First)</span>
-                                </label>
-                            </div>
-
-                            <div class="bg-white/60 p-4 rounded-xl border border-gray-100 space-y-4">
-                                <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
-                                    ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img')">
-                                    <input type="text" id="p-img"
-                                        class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
-                                        placeholder="Image Path 1">
-                                    <button onclick="cloudinaryUpload('p-img')"
-                                        class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
-                                </div>
-                                <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
-                                    ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img2')">
-                                    <input type="text" id="p-img2"
-                                        class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
-                                        placeholder="Image Path 2">
-                                    <button onclick="cloudinaryUpload('p-img2')"
-                                        class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
-                                </div>
-                                <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
-                                    ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img3')">
-                                    <input type="text" id="p-img3"
-                                        class="flex-1 bg-transparent outline-none text-sm font-semibold" value="img/"
-                                        placeholder="Image Path 3">
-                                    <button onclick="cloudinaryUpload('p-img3')"
-                                        class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
-                                </div>
-                            </div>
-                            <input type="text" id="p-keywords" class="admin-input mt-4 !bg-white"
-                                placeholder="Search Keywords (Secret - Hidden from customers)">
-                            <textarea id="p-desc" class="admin-input h-32 py-4 resize-none"
-                                placeholder="Product Description"></textarea>
-                            <div class="flex gap-4 mt-4">
-                                <button onclick="resetForm()"
-                                    class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear
-                                    Form</button>
-                                <button onclick="saveProduct()" id="p-save-btn"
-                                    class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
-                                    Product</button>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Category Section -->
-                    <div id="admin-category-section" class="hidden fade-in">
-                        <div class="bg-gray-50 p-8 rounded-[2rem] border border-gray-100 space-y-4 shadow-sm">
-                            <h3 id="c-form-title" class="text-[11px] font-black uppercase tracking-widest">New Category
-                            </h3>
-                            <input type="hidden" id="edit-cat-id">
-                            <input type="text" id="c-name" class="admin-input" placeholder="Category Title">
-                            <div class="drop-zone flex gap-2 items-center p-1 rounded-xl"
-                                ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
-                                ondrop="handleDrop(event, 'c-img')">
-                                <input type="text" id="c-img" class="admin-input flex-1" value="img/"
-                                    placeholder="Icon Path">
-                                <button onclick="cloudinaryUpload('c-img')"
-                                    class="text-[8px] font-black uppercase px-4 py-4 bg-gray-100 rounded-xl hover:bg-black hover:text-white transition-all">Upload</button>
-                            </div>
-                            <!-- CATEGORY PINNING OPTION -->
-                            <label
-                                class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
-                                <input type="checkbox" id="c-pinned" class="w-4 h-4 accent-black">
-                                <span class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pin Category
-                                    (Show First)</span>
-                            </label>
-                            <div class="flex gap-4 mt-4">
-                                <button onclick="resetForm()"
-                                    class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear
-                                    Form</button>
-                                <button onclick="saveCategory()" id="c-save-btn"
-                                    class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
-                                    Category</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- MIGRATION & CLOUD TOOLS -->
-                    <div class="mt-10 p-6 bg-gray-50 rounded-[2rem] border border-gray-100 space-y-4">
-                        <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Migration &
-                            Cloud Tools</h3>
-                        <div class="grid grid-cols-1 gap-2">
-                            <button onclick="exportExcel()"
-                                class="text-[9px] font-black uppercase bg-black text-white py-4 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-file-excel"></i> Export Excel (CSV)
-                            </button>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button onclick="exportData()"
-                                    class="text-[9px] font-bold uppercase bg-white border border-gray-200 py-3 rounded-xl hover:bg-black hover:text-white transition-all">Backup
-                                    JSON</button>
-                                <label
-                                    class="text-[9px] font-bold uppercase bg-white border border-gray-200 py-3 rounded-xl hover:bg-black hover:text-white transition-all text-center cursor-pointer">
-                                    Restore Data
-                                    <input type="file" id="import-input" class="hidden" accept=".json"
-                                        onchange="importData(event)">
-                                </label>
-                            </div>
-                            <!-- NEW UNIVERSAL MIGRATION BUTTON -->
-                            <button onclick="copyUniversalJSON()"
-                                class="text-[9px] font-black uppercase bg-white border-2 border-dashed border-gray-200 py-3 rounded-xl hover:border-black transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-black">
-                                <i class="fa-solid fa-code"></i> Copy Universal Schema (Dev-Ready)
-                            </button>
-                        </div>
-                        <p class="text-[8px] text-gray-400 text-center italic">Future-proof your data for any database
-                            migration.</p>
-                    </div>
+                <div class="flex p-1 bg-gray-50 rounded-2xl mb-12 max-w-sm border border-gray-100 shadow-inner">
+                    <button onclick="switchAdminTab('p')" id="tab-p"
+                        class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase transition-all bg-white shadow-xl">Products</button>
+                    <button onclick="switchAdminTab('c')" id="tab-c"
+                        class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Categories</button>
+                    <button onclick="switchAdminTab('b')" id="tab-b"
+                        class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Banners</button>
+                    <button onclick="switchAdminTab('s')" id="tab-s"
+                        class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Store</button>
                 </div>
-                <div class="lg:col-span-7">
-                    <div id="admin-list-controls" class="mb-6 space-y-4">
-                        <h4 id="list-title"
-                            class="text-[11px] font-bold uppercase tracking-widest text-gray-300 italic">Live Inventory
-                        </h4>
-                        <div id="product-admin-filters" class="flex flex-col md:flex-row gap-3">
-                            <select id="admin-cat-filter" onchange="renderAdminUI()"
-                                class="admin-input py-3 !bg-gray-50 border border-gray-100 md:w-48 text-xs font-bold uppercase">
-                                <option value="all">All Categories</option>
-                            </select>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-16">
+                    <div class="lg:col-span-5">
+                        <!-- Product Section -->
+                        <div id="admin-product-section" class="fade-in">
+                            <div class="bg-gray-50 p-8 rounded-[2rem] border border-gray-100 space-y-4 shadow-sm">
+                                <h3 id="p-form-title" class="text-[11px] font-black uppercase tracking-widest">Product
+                                    Details</h3>
+                                <input type="hidden" id="edit-id">
+                                <input type="text" id="p-name" class="admin-input" placeholder="Item Name">
+                                <input type="text" id="p-price" class="admin-input" placeholder="Price (AED 50)">
+                                <select id="p-cat-id" class="admin-input cursor-pointer">
+                                    <option value="">Select Category</option>
+                                </select>
+
+                                <div class="grid grid-cols-2 gap-3">
+                                    <input type="text" id="p-size" class="admin-input" placeholder="Size">
+                                    <input type="text" id="p-material" class="admin-input" placeholder="Material">
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <label
+                                        class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
+                                        <input type="checkbox" id="p-stock" class="w-4 h-4 accent-black" checked>
+                                        <span
+                                            class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Available
+                                            in
+                                            Stock</span>
+                                    </label>
+                                    <label
+                                        class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
+                                        <input type="checkbox" id="p-pinned" class="w-4 h-4 accent-black">
+                                        <span class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pin
+                                            to
+                                            Top
+                                            (Always First)</span>
+                                    </label>
+                                </div>
+
+                                <div class="bg-white/60 p-4 rounded-xl border border-gray-100 space-y-4">
+                                    <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
+                                        ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img')">
+                                        <input type="text" id="p-img"
+                                            class="flex-1 bg-transparent outline-none text-sm font-semibold"
+                                            value="img/" placeholder="Image Path 1">
+                                        <button onclick="cloudinaryUpload('p-img')"
+                                            class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
+                                    </div>
+                                    <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
+                                        ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img2')">
+                                        <input type="text" id="p-img2"
+                                            class="flex-1 bg-transparent outline-none text-sm font-semibold"
+                                            value="img/" placeholder="Image Path 2">
+                                        <button onclick="cloudinaryUpload('p-img2')"
+                                            class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
+                                    </div>
+                                    <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
+                                        ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img3')">
+                                        <input type="text" id="p-img3"
+                                            class="flex-1 bg-transparent outline-none text-sm font-semibold"
+                                            value="img/" placeholder="Image Path 3">
+                                        <button onclick="cloudinaryUpload('p-img3')"
+                                            class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
+                                    </div>
+                                </div>
+                                <input type="text" id="p-keywords" class="admin-input mt-4 !bg-white"
+                                    placeholder="Search Keywords (Secret - Hidden from customers)">
+                                <textarea id="p-desc" class="admin-input h-32 py-4 resize-none"
+                                    placeholder="Product Description"></textarea>
+                                <div class="flex gap-4 mt-4">
+                                    <button onclick="resetForm()"
+                                        class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear
+                                        Form</button>
+                                    <button onclick="saveProduct()" id="p-save-btn"
+                                        class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
+                                        Product</button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Category Section -->
+                        <div id="admin-category-section" class="hidden fade-in">
+                            <div class="bg-gray-50 p-8 rounded-[2rem] border border-gray-100 space-y-4 shadow-sm">
+                                <h3 id="c-form-title" class="text-[11px] font-black uppercase tracking-widest">New
+                                    Category
+                                </h3>
+                                <input type="hidden" id="edit-cat-id">
+                                <input type="text" id="c-name" class="admin-input" placeholder="Category Title">
+                                <div class="drop-zone flex gap-2 items-center p-1 rounded-xl"
+                                    ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+                                    ondrop="handleDrop(event, 'c-img')">
+                                    <input type="text" id="c-img" class="admin-input flex-1" value="img/"
+                                        placeholder="Icon Path">
+                                    <button onclick="cloudinaryUpload('c-img')"
+                                        class="text-[8px] font-black uppercase px-4 py-4 bg-gray-100 rounded-xl hover:bg-black hover:text-white transition-all">Upload</button>
+                                </div>
+                                <!-- CATEGORY PINNING OPTION -->
+                                <label
+                                    class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
+                                    <input type="checkbox" id="c-pinned" class="w-4 h-4 accent-black">
+                                    <span class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pin
+                                        Category
+                                        (Show First)</span>
+                                </label>
+                                <div class="flex gap-4 mt-4">
+                                    <button onclick="resetForm()"
+                                        class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear
+                                        Form</button>
+                                    <button onclick="saveCategory()" id="c-save-btn"
+                                        class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
+                                        Category</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Banner Section -->
+                        <div id="admin-banner-section" class="hidden fade-in">
+                            <div class="bg-gray-50 p-8 rounded-[2rem] border border-gray-100 space-y-4 shadow-sm">
+                                <h3 id="b-form-title" class="text-[11px] font-black uppercase tracking-widest">New
+                                    Banner
+                                </h3>
+                                <input type="hidden" id="edit-banner-id">
+                                <input type="text" id="b-title" class="admin-input" placeholder="Banner Title">
+                                <input type="text" id="b-subtitle" class="admin-input" placeholder="Banner Subtitle">
+                                <div class="drop-zone flex gap-2 items-center p-1 rounded-xl"
+                                    ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+                                    ondrop="handleDrop(event, 'b-img')">
+                                    <input type="text" id="b-img" class="admin-input flex-1" value="img/"
+                                        placeholder="Banner Image Path">
+                                    <button onclick="cloudinaryUpload('b-img')"
+                                        class="text-[8px] font-black uppercase px-4 py-4 bg-gray-100 rounded-xl hover:bg-black hover:text-white transition-all">Upload</button>
+                                </div>
+                                <input type="number" id="b-order" class="admin-input" placeholder="Order (0, 1...)">
+                                <div class="flex gap-4 mt-4">
+                                    <button onclick="resetForm()"
+                                        class="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest transition-all hover:bg-gray-200">Clear</button>
+                                    <button onclick="saveBanner()" id="b-save-btn"
+                                        class="flex-[2] bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Sync
+                                        Banner</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Store Settings Section -->
+                        <div id="admin-settings-section" class="hidden fade-in">
+                            <div class="bg-gray-50 p-8 rounded-[2rem] border border-gray-100 space-y-4 shadow-sm">
+                                <h3 class="text-[11px] font-black uppercase tracking-widest">Store Settings</h3>
+                                <input type="text" id="store-name" class="admin-input"
+                                    placeholder="Store Name (Logo Text)">
+                                <div class="drop-zone flex gap-2 items-center p-1 rounded-xl"
+                                    ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+                                    ondrop="handleDrop(event, 'store-logo')">
+                                    <input type="text" id="store-logo" class="admin-input flex-1" value=""
+                                        placeholder="Logo Image URL (Cloudinary)">
+                                    <button onclick="cloudinaryUpload('store-logo')"
+                                        class="text-[8px] font-black uppercase px-4 py-4 bg-gray-100 rounded-xl hover:bg-black hover:text-white transition-all">Upload</button>
+                                </div>
+                                <div class="flex gap-4 mt-4">
+                                    <button onclick="saveSettings()" id="s-save-btn"
+                                        class="flex-1 bg-black text-white py-5 rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-2">Save
+                                        Settings</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MIGRATION & CLOUD TOOLS -->
+                        <div class="mt-10 p-6 bg-gray-50 rounded-[2rem] border border-gray-100 space-y-4">
+                            <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Migration &
+                                Cloud Tools</h3>
+                            <div class="grid grid-cols-1 gap-2">
+                                <button onclick="exportExcel()"
+                                    class="text-[9px] font-black uppercase bg-black text-white py-4 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-file-excel"></i> Export Excel (CSV)
+                                </button>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button onclick="exportData()"
+                                        class="text-[9px] font-bold uppercase bg-white border border-gray-200 py-3 rounded-xl hover:bg-black hover:text-white transition-all">Backup
+                                        JSON</button>
+                                    <label
+                                        class="text-[9px] font-bold uppercase bg-white border border-gray-200 py-3 rounded-xl hover:bg-black hover:text-white transition-all text-center cursor-pointer">
+                                        Restore Data
+                                        <input type="file" id="import-input" class="hidden" accept=".json"
+                                            onchange="importData(event)">
+                                    </label>
+                                </div>
+                                <!-- NEW UNIVERSAL MIGRATION BUTTON -->
+                                <button onclick="copyUniversalJSON()"
+                                    class="text-[9px] font-black uppercase bg-white border-2 border-dashed border-gray-200 py-3 rounded-xl hover:border-black transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-black">
+                                    <i class="fa-solid fa-code"></i> Copy Universal Schema (Dev-Ready)
+                                </button>
+                            </div>
+                            <p class="text-[8px] text-gray-400 text-center italic">Future-proof your data for any
+                                database
+                                migration.</p>
                         </div>
                     </div>
+                    <div class="lg:col-span-7">
+                        <div id="admin-list-controls" class="mb-6 space-y-4">
+                            <h4 id="list-title"
+                                class="text-[11px] font-bold uppercase tracking-widest text-gray-300 italic">Live
+                                Inventory
+                            </h4>
+                            <div id="product-admin-filters" class="flex flex-col md:flex-row gap-3">
+                                <select id="admin-cat-filter" onchange="renderAdminUI()"
+                                    class="admin-input py-3 !bg-gray-50 border border-gray-100 md:w-48 text-xs font-bold uppercase">
+                                    <option value="all">All Categories</option>
+                                </select>
+                                <button onclick="addDemoBanner()" id="add-demo-banner-btn"
+                                    class="hidden text-[9px] font-black uppercase tracking-widest bg-gold-luxe text-white px-6 py-3 rounded-xl hover:opacity-90 transition-all">Add
+                                    Demo Banner</button>
+                            </div>
+                        </div>
 
-                    <div id="admin-product-list-container">
-                        <div id="admin-product-list" class="space-y-4 fade-in"></div>
+                        <div id="admin-product-list-container">
+                            <div id="admin-product-list" class="space-y-4 fade-in"></div>
+                        </div>
+                        <div id="admin-category-list" class="hidden space-y-4 fade-in"></div>
+                        <div id="admin-banner-list" class="hidden space-y-4 fade-in"></div>
                     </div>
-                    <div id="admin-category-list" class="hidden space-y-4 fade-in"></div>
                 </div>
             </div>
         </div>
@@ -369,7 +526,7 @@
 
     <!-- Firebase SDKs & Logic (Inline for local compatibility) -->
     <!-- External Application Logic -->
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=1768667174"></script>
 
     <!-- Instant Bypass & Security Warning -->
     <script>
@@ -406,6 +563,104 @@
             }
         })();
     </script>
+    <!-- Auth Modal -->
+    <!-- WISHLIST SIDEBAR -->
+    <div id="wishlist-sidebar"
+        class="hidden fixed inset-y-0 right-0 w-full md:w-[400px] bg-white z-[130] shadow-2xl flex flex-col transform transition-transform duration-500">
+        <div class="p-8 border-b border-gray-100 flex justify-between items-center bg-white">
+            <div>
+                <h2 class="text-2xl font-serif italic text-[#333333]">Your Favorites</h2>
+                <p class="text-[9px] font-black uppercase tracking-widest text-black/30 mt-1">Saved for later</p>
+            </div>
+            <button onclick="toggleWishlistSidebar()"
+                class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:text-black transition-all">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+        <div id="wishlist-items-list" class="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar">
+            <!-- Wishlist items will be injected here -->
+        </div>
+    </div>
+
+    <!-- CART SIDEBAR -->
+    <div id="cart-sidebar"
+        class="hidden fixed inset-y-0 right-0 w-full md:w-[400px] bg-white z-[130] shadow-2xl flex flex-col transform transition-transform duration-500">
+        <div class="p-8 border-b border-gray-100 flex justify-between items-center bg-white">
+            <div>
+                <h2 class="text-2xl font-serif italic text-[#333333]">Your Cart</h2>
+                <p class="text-[9px] font-black uppercase tracking-widest text-black/30 mt-1">Ready for Inquiry
+                </p>
+            </div>
+            <button onclick="toggleCart()"
+                class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:text-black transition-all">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <div id="cart-items-list" class="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar">
+            <!-- Cart items will be injected here -->
+            <div class="flex flex-col items-center justify-center h-full text-center opacity-20">
+                <i class="fa-solid fa-cart-shopping text-5xl mb-4"></i>
+                <p class="text-[10px] font-black uppercase tracking-widest">Your cart is empty</p>
+            </div>
+        </div>
+
+        <div class="p-8 border-t border-gray-100 bg-gray-50/50">
+            <div class="flex justify-between items-center mb-6">
+                <span class="text-[11px] font-black uppercase tracking-widest text-[#333333]/80">Total Items</span>
+                <span id="cart-total-count" class="text-lg font-bold text-[#333333]">0</span>
+            </div>
+            <button id="cart-checkout-btn" onclick="checkoutCart()"
+                class="w-full py-5 bg-[#333333] text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-black/20 active:scale-95 transition-all flex items-center justify-center gap-3">
+                <i class="fa-brands fa-whatsapp text-lg"></i> Inquire all on WhatsApp
+            </button>
+        </div>
+    </div>
+
+    <div id="auth-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center px-6">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-md" onclick="toggleAuthModal()"></div>
+        <div class="relative w-full max-w-md glass-panel p-10 rounded-[2.5rem] shadow-2xl fade-in">
+            <button onclick="toggleAuthModal()"
+                class="absolute top-6 right-6 text-black/80 hover:text-black transition-all">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <div class="text-center mb-8">
+                <div
+                    class="w-16 h-16 bg-gold-luxe/10 rounded-full flex items-center justify-center text-gold-luxe mx-auto mb-4">
+                    <i class="fa-solid fa-user-lock text-2xl"></i>
+                </div>
+                <h2 id="auth-title" class="text-2xl font-serif italic text-[#333333] mb-1">Welcome Back</h2>
+                <p id="auth-subtitle" class="text-[10px] font-bold uppercase tracking-widest text-black/80">Sign
+                    in to save your collection</p>
+            </div>
+
+            <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div class="space-y-1">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Email
+                        Address</label>
+                    <input type="email" id="auth-email" required class="admin-input !bg-white/50 focus:!bg-white"
+                        placeholder="your@email.com">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Password</label>
+                    <input type="password" id="auth-password" required class="admin-input !bg-white/50 focus:!bg-white"
+                        placeholder="••••••••">
+                </div>
+                <button type="submit" id="auth-submit-btn"
+                    class="w-full py-5 bg-[#333333] text-white rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-black/20 active:scale-95 transition-all">Sign
+                    In</button>
+            </form>
+
+            <div class="mt-8 text-center">
+                <p id="auth-toggle-text" class="text-[10px] text-black/60 font-medium">Don't have an account?
+                    <button onclick="switchAuthMode()"
+                        class="text-gold-luxe font-black uppercase tracking-widest ml-1 hover:underline">Create
+                        One</button>
+                </p>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>

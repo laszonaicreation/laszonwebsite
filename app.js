@@ -1,14 +1,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
 import { getFirestore, collection, getDocs, addDoc, doc, deleteDoc, updateDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAggNtKyGHlnjhx8vwbZFL5aM98awBt6Sw",
-    authDomain: "speed-catalogue.firebaseapp.com",
-    projectId: "speed-catalogue",
-    storageBucket: "speed-catalogue.firebasestorage.app",
-    messagingSenderId: "84589409246",
-    appId: "1:84589409246:web:124e25b09ba54dc9e3e34f"
+    apiKey: "AIzaSyD9YVfGZdSNesw26IsmfFaTBExlYoGt0gc",
+    authDomain: "laszon-uae-catalogue.firebaseapp.com",
+    projectId: "laszon-uae-catalogue",
+    storageBucket: "laszon-uae-catalogue.firebasestorage.app",
+    messagingSenderId: "1070868763766",
+    appId: "1:1070868763766:web:e5d9525b0baccb2eb3fb57"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -19,9 +19,22 @@ const appId = firebaseConfig.projectId;
 const prodCol = collection(db, 'artifacts', appId, 'public', 'data', 'products');
 const catCol = collection(db, 'artifacts', appId, 'public', 'data', 'categories');
 const shareCol = collection(db, 'artifacts', appId, 'public', 'data', 'selections');
+const bannerCol = collection(db, 'artifacts', appId, 'public', 'data', 'banners');
+const settingsDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings');
 
-let DATA = { p: [], c: [] };
-let state = { filter: 'all', sort: 'all', search: '', user: null, selected: [], wishlist: [], selectionId: null, scrollPos: 0 };
+let DATA = { p: [], c: [], b: [], settings: { storeName: 'LASZON GIFTS', logo: '' } };
+// LOAD INITIAL CACHE IF AVAILABLE
+try {
+    const cachedData = localStorage.getItem('laszon_cache');
+    if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        DATA.c = parsed.c || [];
+        DATA.b = parsed.b || [];
+        DATA.settings = parsed.settings || { storeName: 'LASZON GIFTS', logo: '' };
+    }
+} catch (e) { console.error("Cache load failed", e); }
+
+let state = { filter: 'all', sort: 'all', search: '', user: null, selected: [], wishlist: [], cart: [], selectionId: null, scrollPos: 0, banners: [], settings: { storeName: 'LASZON GIFTS', logo: '' } };
 let clicks = 0, lastClickTime = 0;
 
 const startSync = async () => {
@@ -30,10 +43,26 @@ const startSync = async () => {
 };
 
 onAuthStateChanged(auth, async (u) => {
+    const wasAnonymous = state.user && state.user.isAnonymous;
+    const anonWishlist = wasAnonymous ? [...state.wishlist] : [];
+
     state.user = u;
+
     if (u) {
         await loadWishlist();
+
+        // Merge anonymous wishlist to permanent account
+        if (wasAnonymous && !u.isAnonymous && anonWishlist.length > 0) {
+            state.wishlist = Array.from(new Set([...state.wishlist, ...anonWishlist]));
+            await setDoc(doc(db, 'artifacts', appId, 'users', u.uid, 'data', 'wishlist'), { ids: state.wishlist });
+            showToast("Syncing your favorites...");
+        }
+
         refreshData();
+        renderHome(); // Initial "fast" render
+        updateUserUI();
+    } else {
+        startSync();
     }
 });
 
@@ -43,8 +72,6 @@ const handleReentry = () => {
         const pId = urlParams.get('p');
         if (pId) viewDetail(pId, true);
         else renderHome();
-        const loader = document.getElementById('loader');
-        if (loader) loader.style.display = 'none';
     } else if (auth.currentUser) {
         refreshData();
     }
@@ -68,14 +95,6 @@ window.onpopstate = () => {
     refreshData(true);
 };
 
-// GLOBAL SAFETY: Hide loader no matter what after 4 seconds
-setTimeout(() => {
-    const loader = document.getElementById('loader');
-    if (loader && loader.style.display !== 'none') {
-        console.warn("Safety loader hide triggered.");
-        loader.style.display = 'none';
-    }
-}, 4000);
 
 async function loadWishlist() {
     if (!state.user) return;
@@ -100,49 +119,106 @@ function updateWishlistBadge() {
     }
 }
 
-window.toggleWishlist = async (e, id) => {
-    e.stopPropagation();
+window.toggleWishlist = async (id) => {
     if (!state.user) return showToast("Authenticating...");
-    const card = e.target.closest('.product-card');
-    if (state.wishlist.includes(id)) {
+
+    const isActive = state.wishlist.includes(id);
+
+    if (isActive) {
         state.wishlist = state.wishlist.filter(x => x !== id);
-        if (card) card.classList.remove('wish-active');
     } else {
         state.wishlist.push(id);
-        if (card) card.classList.add('wish-active');
     }
+
+    // Update ALL visible heart icons for this item
+    document.querySelectorAll(`#wish-${id}`).forEach(btn => {
+        if (isActive) btn.classList.remove('wish-active');
+        else btn.classList.add('wish-active');
+    });
+
+    // DETAIL VIEW SPECIFIC UPDATE
+    const wishIcon = document.querySelector('.detail-view-container .fa-heart');
+    if (wishIcon) {
+        if (!isActive) { // We just added it
+            wishIcon.classList.replace('fa-regular', 'fa-solid');
+            wishIcon.classList.add('text-red-500');
+        } else {
+            wishIcon.classList.replace('fa-solid', 'fa-regular');
+            wishIcon.classList.remove('text-red-500');
+        }
+    }
+
     updateWishlistBadge();
+
+    // Refresh relevant UI sections
+    if (state.filter === 'wishlist') renderHome();
+
+    const sidebar = document.getElementById('wishlist-sidebar');
+    if (sidebar && !sidebar.classList.contains('hidden')) {
+        renderWishlistSidebar();
+    }
+
     try {
         await setDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'data', 'wishlist'), { ids: state.wishlist });
-        if (state.filter === 'wishlist') renderHome();
-    } catch (err) { showToast("Sync Error"); }
+    } catch (err) { console.error("Sync Error", err); }
 };
 
 async function refreshData(isNavigationOnly = false) {
     try {
         if (!isNavigationOnly || DATA.p.length === 0) {
-            const [pSnap, cSnap] = await Promise.all([getDocs(prodCol), getDocs(catCol)]);
+            const fetchPromises = [getDocs(prodCol), getDocs(catCol), getDocs(bannerCol)];
+            const [pSnap, cSnap, bSnap] = await Promise.all(fetchPromises);
+
             DATA.p = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             DATA.c = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            DATA.b = bSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Separate settings fetch to prevent blocking
+            try {
+                const sSnap = await getDoc(settingsDoc);
+                if (sSnap.exists()) {
+                    DATA.settings = sSnap.data();
+                }
+            } catch (e) {
+                console.warn("Settings fetch failed, using defaults", e);
+            }
+
+            // SAVE TO CACHE FOR NEXT SESSION
+            localStorage.setItem('laszon_cache', JSON.stringify({ c: DATA.c, b: DATA.b, settings: DATA.settings }));
+
+            applySettings();
+
+            // AUTO-DEMO: If no banners exist, add placeholders immediately
+            if (DATA.b.length === 0 && !isNavigationOnly) {
+                console.log("No banners found, adding demos...");
+                await addDemoBanner();
+            }
         }
         const urlParams = new URLSearchParams(window.location.search);
         const shareId = urlParams.get('s');
         const prodId = urlParams.get('p');
+        const filterId = urlParams.get('f');
         const isAdminOpen = !document.getElementById('admin-panel').classList.contains('hidden');
 
         if (!isAdminOpen) {
             if (prodId && DATA.p.length > 0) {
                 viewDetail(prodId, true);
-            } else if (shareId) {
-                try {
-                    const selDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'selections', shareId));
-                    if (selDoc.exists()) {
-                        state.selectionId = shareId;
-                        state.selected = selDoc.data().ids;
-                    }
-                } catch (e) { console.error("Selection sync failed"); }
-                renderHome();
             } else {
+                if (filterId === 'wishlist') {
+                    toggleWishlistSidebar();
+                    state.filter = 'all';
+                } else if (filterId) {
+                    state.filter = filterId;
+                }
+                if (shareId) {
+                    try {
+                        const selDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'selections', shareId));
+                        if (selDoc.exists()) {
+                            state.selectionId = shareId;
+                            state.selected = selDoc.data().ids;
+                        }
+                    } catch (e) { console.error("Selection sync failed"); }
+                }
                 renderHome();
             }
         } else {
@@ -153,47 +229,32 @@ async function refreshData(isNavigationOnly = false) {
         populateAdminCatFilter();
         renderAdminUI();
 
-        const loader = document.getElementById('loader');
-        if (loader) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const isDirectLink = urlParams.has('p') || urlParams.has('s');
+        // Preload in background (non-blocking)
+        const iconsToLoad = DATA.c.map(c => getOptimizedUrl(c.img)).filter(u => u && u !== 'img/').slice(0, 10);
+        const stockFilter = (items) => items.filter(p => p.inStock !== false);
+        let filteredForPreload = [];
+        if (state.selectionId) filteredForPreload = DATA.p.filter(p => state.selected.includes(p.id));
+        else if (state.filter === 'wishlist') filteredForPreload = DATA.p.filter(p => state.wishlist.includes(p.id));
+        else if (state.filter !== 'all') filteredForPreload = stockFilter(DATA.p.filter(p => p.catId === state.filter));
+        else filteredForPreload = stockFilter(DATA.p);
 
-            if (isDirectLink) {
-                loader.style.display = 'none';
-            } else {
-                // HIDE LOADER IMMEDIATELY as soon as data (links) are ready
-                loader.style.display = 'none';
+        filteredForPreload.sort((a, b) => {
+            const pinA = a.isPinned ? 1 : 0;
+            const pinB = b.isPinned ? 1 : 0;
+            if (pinA !== pinB) return pinB - pinA;
+            return (b.updatedAt || 0) - (a.updatedAt || 0);
+        });
 
-                // Preload in background (non-blocking)
-                const iconsToLoad = DATA.c.map(c => getOptimizedUrl(c.img)).filter(u => u && u !== 'img/').slice(0, 10);
-                const stockFilter = (items) => items.filter(p => p.inStock !== false);
-                let filteredForPreload = [];
-                if (state.selectionId) filteredForPreload = DATA.p.filter(p => state.selected.includes(p.id));
-                else if (state.filter === 'wishlist') filteredForPreload = DATA.p.filter(p => state.wishlist.includes(p.id));
-                else if (state.filter !== 'all') filteredForPreload = stockFilter(DATA.p.filter(p => p.catId === state.filter));
-                else filteredForPreload = stockFilter(DATA.p);
+        const prodsToLoad = filteredForPreload.slice(0, 8).map(p => getOptimizedUrl(p.img)).filter(u => u && u !== 'img/');
+        const allToPreload = [...new Set([...prodsToLoad, ...iconsToLoad])];
 
-                filteredForPreload.sort((a, b) => {
-                    const pinA = a.isPinned ? 1 : 0;
-                    const pinB = b.isPinned ? 1 : 0;
-                    if (pinA !== pinB) return pinB - pinA;
-                    return (b.updatedAt || 0) - (a.updatedAt || 0);
-                });
-
-                const prodsToLoad = filteredForPreload.slice(0, 8).map(p => getOptimizedUrl(p.img)).filter(u => u && u !== 'img/');
-                const allToPreload = [...new Set([...prodsToLoad, ...iconsToLoad])];
-
-                // Fire and forget (don't await)
-                allToPreload.forEach(url => {
-                    const img = new Image();
-                    img.src = url;
-                });
-            }
-        }
+        // Fire and forget (don't await)
+        allToPreload.forEach(url => {
+            const img = new Image();
+            img.src = url;
+        });
     } catch (err) {
         console.error(err);
-        const loader = document.getElementById('loader');
-        if (loader) loader.style.display = 'none';
     }
 }
 
@@ -202,6 +263,7 @@ const safePushState = (params, replace = false) => {
         const url = new URL(window.location.href);
         if (params.p === null) url.searchParams.delete('p');
         if (params.s === null) url.searchParams.delete('s');
+        if (params.f === null) url.searchParams.delete('f');
         Object.keys(params).forEach(key => {
             if (params[key] !== null) url.searchParams.set(key, params[key]);
         });
@@ -234,27 +296,31 @@ window.handleLogoClick = () => {
     }
 };
 
-window.hideDashboardButton = () => {
+window.hideDashboardButton = (e) => {
+    if (e) e.stopPropagation();
     const btn = document.getElementById('admin-entry-btn');
     const hideBtn = document.getElementById('admin-hide-btn');
     if (btn) btn.classList.add('hidden');
     if (hideBtn) hideBtn.classList.add('hidden');
-    showToast("Dashboard Hidden");
-    renderHome(); // Re-render to hide pin icons
 };
 
-window.goBackToHome = (forceReset = false) => {
-    if (forceReset) {
-        state.selectionId = null;
-        state.selected = [];
-        state.filter = 'all';
-        state.scrollPos = 0;
-        safePushState({ s: null, p: null });
-    } else {
-        safePushState({ p: null });
-    }
+window.goBackToHome = (forceAll = false) => {
+    if (forceAll) { state.filter = 'all'; state.selectionId = null; state.search = ''; }
+    safePushState({ p: null }, false);
     renderHome();
+    document.getElementById('mobile-nav')?.classList.remove('hidden');
+    window.scrollTo({ top: state.scrollPos, behavior: 'smooth' });
 };
+
+function updateMobileNav() {
+    const nav = document.getElementById('mobile-nav');
+    if (!nav) return;
+    const btns = nav.querySelectorAll('button');
+    btns.forEach(b => b.classList.remove('active'));
+
+    if (state.filter === 'all' && !state.search) btns[0].classList.add('active');
+    // Wishlist (btns[2]) active state is now handled by the sidebar itself or can be left inactive as it's a popup
+}
 
 window.toggleSelectAll = () => {
     if (state.selectionId) return;
@@ -278,8 +344,12 @@ function renderHome() {
 
         // Simple check: If product grid is absent, load the template
         // This ensures we always have the UI structure.
-        if (!appMain.querySelector('#product-grid')) {
-            appMain.innerHTML = template.innerHTML;
+        // Target the dynamic area instead of wiping the whole app container
+        const dynamicContent = appMain.querySelector('#dynamic-main-content');
+        if (!dynamicContent || !template) return;
+
+        if (!dynamicContent.querySelector('#product-grid')) {
+            dynamicContent.innerHTML = template.innerHTML;
         }
 
         // SELECT ALL ELEMENTS AFTER INJECTION
@@ -296,7 +366,16 @@ function renderHome() {
         const clearBtn = appMain.querySelector('#clear-search-btn');
         const mobileSort = appMain.querySelector('#price-sort-mob');
 
-        // 1. Handle selection/wishlist headers
+        // 1. Handle selection/wishlist headers & Banner
+        const banner = appMain.querySelector('.hero-banner-container'); // Need to ensure it's selectable
+
+        if (state.selectionId || state.filter !== 'all' || state.search) {
+            appMain.querySelector('#hero-slider-wrapper')?.classList.add('hidden'); // Hide Slider
+        } else {
+            appMain.querySelector('#hero-slider-wrapper')?.classList.remove('hidden'); // Show Slider
+            if (DATA.b.length > 0) renderHeroSlider();
+        }
+
         if (state.selectionId) {
             if (selectionHeader) selectionHeader.classList.remove('hidden');
             if (catRow) catRow.classList.add('hidden');
@@ -315,7 +394,8 @@ function renderHome() {
             if (categorySelector) categorySelector.classList.remove('hidden');
 
             let cHtml = `<div class="category-item ${state.filter === 'all' ? 'active' : ''}" onclick="applyFilter('all', event)"><div class="category-img-box flex items-center justify-center bg-gray-50 text-[10px] font-black text-gray-300">All</div><p class="category-label">Explore</p></div>`;
-            const isAdminVisible = !document.getElementById('admin-entry-btn').classList.contains('hidden');
+            const adminBtn = document.getElementById('admin-entry-btn');
+            const isAdminVisible = adminBtn && !adminBtn.classList.contains('hidden');
 
             let categories = [...DATA.c].sort((a, b) => {
                 const pinA = a.isPinned ? 1 : 0;
@@ -326,18 +406,25 @@ function renderHome() {
                 }
                 return 0;
             });
-
-            categories.forEach(c => {
-                cHtml += `<div class="category-item ${state.filter === c.id ? 'active' : ''}" onclick="applyFilter('${c.id}', event)">
-                    <div class="category-img-box">
-                        <img src="${getOptimizedUrl(c.img)}" onerror="this.src='https://placehold.co/100x100?text=Gift'">
-                        ${c.isPinned && isAdminVisible ? '<div class="absolute -top-1 -right-1 w-4 h-4 bg-black text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm"><i class="fa-solid fa-thumbtack text-[6px]"></i></div>' : ''}
-                    </div>
-                    <p class="category-label truncate px-1 w-full">${c.name}</p>
-                </div>`;
-            });
+            const catHtml = `
+        <div class="category-item ${state.filter === 'all' ? 'active' : ''}" onclick="applyFilter('all')">
+            <div class="category-img-box">
+                <div class="w-full h-full rounded-[14px] bg-black/5 flex items-center justify-center text-black/40 text-lg">
+                    <i class="fa-solid fa-border-all"></i>
+                </div>
+            </div>
+            <span class="category-label">All</span>
+        </div>
+    ` + DATA.c.map(c => `
+        <div class="category-item ${state.filter === c.id ? 'active' : ''}" onclick="applyFilter('${c.id}')">
+            <div class="category-img-box">
+                <img src="${getOptimizedUrl(c.img, 'w_200,c_fill,f_auto,q_auto')}" alt="${c.name}" class="w-full h-full object-cover" loading="lazy">
+            </div>
+            <span class="category-label">${c.name}</span>
+        </div>
+    `).join('');
             if (catRow) {
-                catRow.innerHTML = cHtml;
+                catRow.innerHTML = catHtml;
 
                 // Wait for DOM to settle
                 setTimeout(() => {
@@ -419,23 +506,36 @@ function renderHome() {
             if (state.selectionId) selectAllBtn.parentElement?.classList.add('hidden');
         }
         if (grid) {
-            grid.innerHTML = filtered.map((p, idx) => `
-        <div class="product-card group fade-in ${state.selected.includes(p.id) ? 'selected' : ''} ${state.wishlist.includes(p.id) ? 'wish-active' : ''}" onclick="viewDetail('${p.id}')">
-            <div class="wish-btn shadow-sm" onclick="toggleWishlist(event, '${p.id}')"><i class="fa-solid fa-heart text-[10px]"></i></div>
-            ${!state.selectionId && !state.filter.includes('wishlist') ? `<div class="select-btn shadow-sm" onclick="toggleSelect(event, '${p.id}')"><i class="fa-solid fa-check text-[10px]"></i></div>` : ''}
-            <div class="img-container mb-4 shadow-sm">
-                <img src="${getOptimizedUrl(p.img)}" 
-                     ${idx < 8 ? 'fetchpriority="high" loading="eager"' : 'fetchpriority="low" loading="lazy"'}
-                     decoding="async"
-                     onload="this.classList.add('loaded')"
-                     alt="${p.name}">
-            </div>
-            <div class="px-1 text-left">
-                <h3 class="capitalize truncate leading-none text-gray-900 font-semibold">${p.name}</h3>
-                <p class="price-tag mt-2 font-bold">${p.price} AED</p>
-            </div>
-        </div>
-    `).join('') || `<p class="col-span-full text-center py-40 text-gray-300 italic text-[11px]">No items found.</p>`;
+            grid.innerHTML = filtered.map((p, idx) => {
+                let pinIcon = '';
+
+                return `
+                    <div class="product-card fade-in relative" onclick="viewDetail('${p.id}')">
+                        <div class="img-container mb-4 overflow-hidden" 
+                             style="background-image: url('${getOptimizedUrl(p.img, 'w_50,e_blur:1000,f_auto,q_10')}'); background-size: cover;">
+                            ${pinIcon}
+                            <img src="${getOptimizedUrl(p.img, 'w_600,c_fill,f_auto,q_auto')}" 
+                                 ${idx < 8 ? 'fetchpriority="high" loading="eager"' : 'fetchpriority="low" loading="lazy"'}
+                                 decoding="async"
+                                 onload="this.classList.add('loaded')"
+                                 alt="${p.name}">
+                        </div>
+                        <div class="px-1">
+                            <span class="luxe-tag">${DATA.c.find(c => c.id === p.catId)?.name || 'Exclusive'}</span>
+                            <h3 class="text-[12px] font-bold text-[#333333] leading-snug line-clamp-1 mb-1">${p.name}</h3>
+                            <div class="flex items-center justify-between mt-1">
+                                <p class="text-[11px] font-black tracking-tight text-[#333333]/60">${p.price} AED</p>
+                                ${p.inStock === false ? '<span class="text-[8px] font-black uppercase tracking-widest text-red-400">Sold Out</span>' : ''}
+                            </div>
+                        </div>
+                        <button onclick="event.stopPropagation(); toggleWishlist('${p.id}')" 
+                                id="wish-${p.id}"
+                                class="wish-btn ${state.wishlist.includes(p.id) ? 'wish-active' : ''}">
+                            <i class="fa-solid fa-heart"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('') || `<p class="col-span-full text-center py-40 text-gray-300 italic text-[11px]">No items found.</p>`;
         }
 
         // 5. Update Search & Sort UI
@@ -447,6 +547,7 @@ function renderHome() {
         if (mobileSort) mobileSort.value = state.sort;
 
         updateSelectionBar();
+        updateMobileNav();
         if (!state.selectionId && state.filter !== 'wishlist' && !state.search) window.scrollTo({ top: state.scrollPos });
         else if (!state.search) window.scrollTo({ top: 0 });
     } catch (e) {
@@ -479,55 +580,85 @@ window.viewDetail = (id, skipHistory = false) => {
         safePushState({ p: id }, isAlreadyInDetail);
     }
     const appMain = document.getElementById('app');
-    if (!appMain) return;
-    appMain.innerHTML = `
-<div class="max-w-5xl mx-auto py-8 md:py-16 fade-in px-4 pb-64 detail-view-container text-left">
-    <button onclick="goBackToHome()" class="mb-12 text-[10px] font-bold text-gray-400 flex items-center gap-2 uppercase tracking-widest hover:text-black transition-all">
-        <i class="fa-solid fa-arrow-left"></i> Back to ${state.filter === 'wishlist' ? 'Favorites' : (state.selectionId ? 'Selection' : 'Catalogue')}
-    </button>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">
-        <div>
-            <div class="zoom-img-container aspect-square" onmousemove="handleZoom(event, this)" onmouseleave="resetZoom(this)" onclick="openFullScreen('${p.img}')">
-                <img src="${getOptimizedUrl(p.img)}" id="main-detail-img" class="w-full h-full object-cover" fetchpriority="high" loading="eager">
-            </div>
-            <div class="thumb-grid justify-center lg:justify-start">
-                <div class="thumb-box active" onclick="switchImg('${p.img}', this)"><img src="${getOptimizedUrl(p.img)}"></div>
-                ${p.img2 && p.img2 !== 'img/' ? `<div class="thumb-box" onclick="switchImg('${p.img2}', this)"><img src="${getOptimizedUrl(p.img2)}"></div>` : ''}
-                ${p.img3 && p.img3 !== 'img/' ? `<div class="thumb-box" onclick="switchImg('${p.img3}', this)"><img src="${getOptimizedUrl(p.img3)}"></div>` : ''}
-            </div>
+    const dynamicContent = document.getElementById('dynamic-main-content');
+    if (!appMain || !dynamicContent) return;
+
+    // Scroll home content to top before switching
+    window.scrollTo({ top: 0, behavior: 'instant' });
+
+    const thumbs = [p.img, p.img2, p.img3].filter(u => u && u !== 'img/').map(imgUrl => `
+        <div class="thumb-box ${imgUrl === p.img ? 'active' : ''}" onclick="switchImg('${imgUrl}', this)">
+            <img src="${getOptimizedUrl(imgUrl)}">
         </div>
-        <div class="py-2">
-            <span class="text-[9px] font-bold text-gray-300 tracking-[0.05em] uppercase mb-8 block">Exclusive Selection</span>
-            <div class="space-y-12">
-                <div><span class="detail-label">Item name:</span><h2 class="detail-product-name capitalize">${p.name}</h2></div>
-                <div class="flex items-center gap-10 mt-8 mb-10 pb-10 border-b border-gray-100">
-                    <div><span class="detail-label">Listing Price</span><p class="detail-price-text">${p.price} AED</p></div>
-                </div>
-                <div class="flex flex-wrap gap-4 mb-12">
-                    ${p.size ? `<div class="spec-badge"><i class="fa-solid fa-maximize text-[10px] text-gray-400"></i><span>${p.size}</span></div>` : ''}
-                    ${p.material ? `<div class="spec-badge"><i class="fa-solid fa-layer-group text-[10px] text-gray-400"></i><span>${p.material}</span></div>` : ''}
-                </div>
-                <div class="mb-14">
-                    <span class="detail-label">Product Story</span>
-                    <p class="detail-description-text mt-4 whitespace-pre-line">${p.desc || 'Premium handcrafted selection curated specifically for our collection.'}</p>
-                </div>
-                <button onclick="inquireOnWhatsApp('${p.id}')" class="hidden md:flex w-full bg-black text-white py-6 rounded-3xl font-bold text-[11px] uppercase tracking-[0.2em] shadow-xl items-center justify-center gap-3 hover:scale-[1.02] transition-all">
-                    <i class="fa-brands fa-whatsapp text-lg"></i>
-                    INQUIRE ON WHATSAPP
+    `).join('');
+
+    dynamicContent.innerHTML = `
+        <div class="detail-view-container fade-in pt-4 pb-32">
+            <div class="max-w-4xl mx-auto px-6">
+                <!-- ELEGANT BACK BUTTON -->
+                <button onclick="goBackToHome()" class="mb-8 flex items-center gap-2 text-[#333333]/40 hover:text-[#333333] transition-all group">
+                    <div class="w-8 h-8 rounded-full border border-black/10 flex items-center justify-center group-hover:bg-black/5 transition-all">
+                        <i class="fa-solid fa-arrow-left text-xs"></i>
+                    </div>
+                    <span class="text-[9px] font-black uppercase tracking-[0.2em]">Back to Gallery</span>
                 </button>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-20">
+                    <div class="space-y-6">
+                        <div class="zoom-img-container shadow-2xl shadow-black/5 border-none rounded-[2.5rem]" 
+                             onmousemove="handleZoom(event, this)" 
+                             onmouseleave="resetZoom(this)"
+                             onclick="openFullScreen('${p.img}')">
+                            <img id="main-detail-img" src="${p.img}" alt="${p.name}">
+                        </div>
+                        <div class="thumb-grid no-scrollbar overflow-x-auto pb-4">
+                            ${thumbs}
+                        </div>
+                    </div>
+                    <div class="space-y-8 pt-4">
+                        <div class="space-y-3">
+                            <span class="luxe-tag text-[10px] text-gold-luxe">Laszon Exclusive Selection</span>
+                            <h2 class="detail-product-name leading-tight text-[#333333]">${p.name}</h2>
+                            <p class="text-xl font-bold text-[#333333]/60">${p.price} AED</p>
+                        </div>
+                        
+                        <div class="flex flex-col gap-4">
+                            <!-- WhatsApp HIGHLIGHTED AS PRIMARY -->
+                            <button onclick="inquireOnWhatsApp('${p.id}')" 
+                                class="w-full bg-[#121212] text-white py-6 rounded-2xl font-black text-[11px] uppercase tracking-[0.25em] shadow-2xl shadow-black/30 active:scale-95 transition-all flex items-center justify-center gap-3">
+                                <i class="fa-brands fa-whatsapp text-2xl"></i> WhatsApp Inquiry
+                            </button>
+
+                            <div class="flex gap-4">
+                                <button onclick="addToCart('${p.id}')" 
+                                    class="flex-[4] glass-panel text-[#333333] py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all flex items-center justify-center gap-3 border border-black/10">
+                                    <i class="fa-solid fa-cart-shopping text-lg"></i> Add to Cart
+                                </button>
+                                <button onclick="toggleWishlist('${p.id}')" 
+                                    class="flex-1 glass-panel text-[#333333] rounded-2xl flex items-center justify-center active:scale-90 transition-all border border-black/10">
+                                    <i class="fa-${state.wishlist.includes(p.id) ? 'solid' : 'regular'} fa-heart text-xl ${state.wishlist.includes(p.id) ? 'text-red-500' : ''}"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        ${p.inStock === false ? '<div class="p-4 bg-red-50 text-red-600 rounded-xl text-center font-black text-[10px] uppercase tracking-widest border border-red-100 italic">This product is currently sold out.</div>' : ''}
+
+                        <div class="space-y-8 pt-10 border-t border-gray-100">
+                             <div class="grid grid-cols-1 gap-6">
+                                 ${p.size ? `<div><span class="detail-label">Dimensions</span><p class="text-[13px] font-bold text-[#333333]">${p.size}</p></div>` : ''}
+                                 ${p.material ? `<div><span class="detail-label">Material & Craftsmanship</span><p class="text-[13px] font-bold text-[#333333]">${p.material}</p></div>` : ''}
+                             </div>
+                            <div>
+                                <span class="detail-label">The Story</span>
+                                <p class="detail-description-text leading-relaxed">${p.desc || "An exquisite piece carefully curated for the Laszon collection. Crafted with exceptional attention to detail."}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
-<div class="fixed md:hidden bottom-0 left-0 w-full flex justify-center p-3 z-[70]">
-    <div class="w-11/12 bg-white/80 backdrop-blur-xl border border-white/20 p-1.5 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.15)] premium-btn-anim">
-        <button onclick="inquireOnWhatsApp('${p.id}')" class="w-full bg-black text-white py-3.5 rounded-full font-bold text-[10px] uppercase tracking-[0.15em] flex items-center justify-center gap-3 active:scale-95 transition-all">
-            <i class="fa-brands fa-whatsapp text-lg text-green-400"></i>
-            INQUIRE ON WHATSAPP
-        </button>
-    </div>
-</div>
-`;
+    `;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
@@ -570,8 +701,33 @@ window.saveCategory = async () => {
     catch (e) { showToast("Category Error"); } finally { if (btn) { btn.disabled = false; btn.innerText = "Sync Category"; } }
 };
 
+window.saveBanner = async () => {
+    const id = document.getElementById('edit-banner-id')?.value;
+    const btn = document.getElementById('b-save-btn');
+    const data = {
+        title: document.getElementById('b-title')?.value,
+        subtitle: document.getElementById('b-subtitle')?.value,
+        img: document.getElementById('b-img')?.value,
+        order: parseInt(document.getElementById('b-order')?.value) || 0,
+        updatedAt: Date.now()
+    };
+    if (!data.img) return showToast("Image required");
+    if (btn) { btn.disabled = true; btn.innerText = "Syncing..."; }
+    try {
+        if (id) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'banners', id), data);
+        else await addDoc(bannerCol, data);
+        showToast("Banner Saved");
+        resetForm();
+        DATA.p = [];
+        refreshData();
+    }
+    catch (e) { showToast("Save Error"); }
+    finally { if (btn) { btn.disabled = false; btn.innerText = "Sync Banner"; } }
+};
+
 window.deleteProduct = async (id) => { if (!confirm("Are you sure?")) return; try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'products', id)); showToast("Deleted"); refreshData(); } catch (e) { showToast("Delete Error"); } };
 window.deleteCategory = async (id) => { if (!confirm("Delete Category?")) return; try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', id)); showToast("Category Removed"); refreshData(); } catch (e) { showToast("Error"); } };
+window.deleteBanner = async (id) => { if (!confirm("Delete Banner?")) return; try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'banners', id)); showToast("Banner Removed"); refreshData(); } catch (e) { showToast("Error"); } };
 
 window.editProduct = (id) => {
     const item = DATA.p.find(x => x.id === id);
@@ -634,7 +790,7 @@ window.exportData = () => {
         const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); if (!a) return; a.href = url;
-        a.download = `speedgifts_backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+        a.download = `laszongifts_backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         showToast("Backup Created!");
     } catch (err) { showToast("Export Failed"); }
@@ -654,7 +810,7 @@ window.exportExcel = () => {
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); if (!a) return; a.href = url;
-        a.download = `speedgifts_inventory_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
+        a.download = `laszongifts_inventory_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         showToast("Excel Exported!");
     } catch (err) { showToast("Export Failed"); }
@@ -665,7 +821,7 @@ window.copyUniversalJSON = () => {
     try {
         const universalBackup = {
             metadata: {
-                source: "Speed Gifts Boutique UI",
+                source: "Laszon Gifts Boutique UI",
                 version: "2.6.0",
                 exportDate: new Date().toISOString(),
                 schema: {
@@ -824,9 +980,9 @@ window.shareSelection = async () => {
 
 window.sendBulkInquiry = () => {
     const items = state.selected.map(id => DATA.p.find(p => p.id === id)).filter(x => x);
-    let msg = `*Hello Speed Gifts!*\nI am interested in these items:\n\n`;
+    let msg = `*Hello Laszon Gifts!*\nI am interested in these items:\n\n`;
     items.forEach((item, i) => { const pUrl = `${window.location.origin}${window.location.pathname}?p=${item.id}`; msg += `${i + 1}. *${item.name}* - ${item.price} AED\nLink: ${pUrl}\n\n`; });
-    window.open(`https://wa.me/971561010387?text=${encodeURIComponent(msg)}`);
+    window.open(`https://wa.me/971559653589?text=${encodeURIComponent(msg)}`);
 };
 
 window.inquireOnWhatsApp = (id) => {
@@ -834,7 +990,7 @@ window.inquireOnWhatsApp = (id) => {
     if (!p) return;
     const pUrl = `${window.location.origin}${window.location.pathname}?p=${p.id}`;
     const msg = `*Inquiry regarding:* ${p.name}\n*Price:* ${p.price} AED\n\n*Product Link:* ${pUrl}\n\nPlease let me know the availability.`;
-    window.open(`https://wa.me/971561010387?text=${encodeURIComponent(msg)}`);
+    window.open(`https://wa.me/971559653589?text=${encodeURIComponent(msg)}`);
 };
 
 window.switchImg = (src, el) => {
@@ -885,6 +1041,140 @@ window.closeFullScreen = () => {
     }
 };
 
+window.switchAdminTab = (tab) => {
+    const tabs = ['p', 'c', 'b', 's'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        const sectionId = t === 'p' ? 'admin-product-section' : t === 'c' ? 'admin-category-section' : t === 'b' ? 'admin-banner-section' : 'admin-settings-section';
+        const listId = t === 'p' ? 'admin-product-list-container' : t === 'c' ? 'admin-category-list' : t === 'b' ? 'admin-banner-list' : null;
+
+        const section = document.getElementById(sectionId);
+        const list = listId ? document.getElementById(listId) : null;
+
+        if (btn) {
+            btn.classList.toggle('bg-white', t === tab);
+            btn.classList.toggle('shadow-xl', t === tab);
+            btn.classList.toggle('text-gray-400', t !== tab);
+        }
+        if (section) section.classList.toggle('hidden', t !== tab);
+        if (list) list.classList.toggle('hidden', t !== tab);
+    });
+
+    const demoBtn = document.getElementById('add-demo-banner-btn');
+    if (demoBtn) demoBtn.classList.toggle('hidden', tab !== 'b');
+
+    renderAdminUI();
+};
+
+window.editProduct = (id) => {
+    const item = DATA.p.find(x => x.id === id);
+    if (!item) return;
+    switchAdminTab('p');
+    document.getElementById('edit-id').value = item.id;
+    document.getElementById('p-name').value = item.name;
+    document.getElementById('p-price').value = item.price;
+    document.getElementById('p-cat-id').value = item.catId;
+    document.getElementById('p-size').value = item.size || '';
+    document.getElementById('p-material').value = item.material || '';
+    document.getElementById('p-desc').value = item.desc || '';
+    document.getElementById('p-img').value = item.img || 'img/';
+    document.getElementById('p-img2').value = item.img2 || 'img/';
+    document.getElementById('p-img3').value = item.img3 || 'img/';
+    document.getElementById('p-stock').checked = item.inStock !== false;
+    document.getElementById('p-pinned').checked = item.isPinned === true;
+    document.getElementById('p-keywords').value = item.keywords || '';
+    document.getElementById('p-form-title').innerText = "Edit Product";
+    document.getElementById('p-save-btn').innerText = "Update Product";
+    document.getElementById('admin-panel').scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+window.editBanner = (id) => {
+    const item = DATA.b.find(x => x.id === id);
+    if (!item) return;
+    switchAdminTab('b');
+    document.getElementById('edit-banner-id').value = item.id;
+    document.getElementById('b-title').value = item.title || '';
+    document.getElementById('b-subtitle').value = item.subtitle || '';
+    document.getElementById('b-img').value = item.img || 'img/';
+    document.getElementById('b-order').value = item.order || 0;
+    document.getElementById('b-form-title').innerText = "Edit Banner";
+    document.getElementById('b-save-btn').innerText = "Update Banner";
+    document.getElementById('admin-panel').scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+window.addDemoBanner = async (e) => {
+    const btn = (e && e.currentTarget) || document.getElementById('add-demo-banner-btn');
+    if (btn) { btn.disabled = true; btn.innerText = "Adding..."; }
+    try {
+        const demos = [
+            { title: "The Art of Gifting", subtitle: "Discover our Exclusive Collection", img: "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?q=80&w=1000&auto=format&fit=crop" },
+            { title: "Luxe Favorites", subtitle: "Curated for Elegance", img: "https://images.unsplash.com/photo-1513201099705-a9746e1e201f?q=80&w=1000&auto=format&fit=crop" },
+            { title: "Timeless Treasures", subtitle: "Gift with Love", img: "https://images.unsplash.com/photo-1544816153-39ad361664ec?q=80&w=1000&auto=format&fit=crop" },
+            { title: "Modern Boutique", subtitle: "Elevated Style", img: "https://images.unsplash.com/photo-1481349518771-20055b2a7b24?q=80&w=1000&auto=format&fit=crop" }
+        ];
+
+        for (const [i, d] of demos.entries()) {
+            await addDoc(bannerCol, { ...d, order: i, updatedAt: Date.now() });
+        }
+        showToast("4 Demo Banners Added!");
+        DATA.p = [];
+        refreshData();
+    } catch (e) {
+        showToast("Error adding demo");
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerText = "Add Demo Banner"; }
+    }
+};
+
+function renderHeroSlider() {
+    const container = document.getElementById('hero-slider-container');
+    const dotsContainer = document.getElementById('slider-dots');
+    if (!container || !dotsContainer) return;
+
+    const banners = DATA.b.sort((a, b) => (a.order || 0) - (b.order || 0));
+    if (banners.length === 0) {
+        container.innerHTML = `
+            <div class="hero-slide">
+                <img src="https://images.unsplash.com/photo-1549465220-1a8b9238cd48?q=80&w=1000&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover">
+                <div class="absolute inset-0 bg-gradient-to-r from-[#8b6c31]/70 via-[#8b6c31]/20 to-transparent flex flex-col justify-center px-8 md:px-16">
+                    <h2 class="text-white text-3xl md:text-5xl font-serif italic mb-2 tracking-wide">The Art of Gifting</h2>
+                    <p class="text-white/80 text-[10px] md:text-xs font-black uppercase tracking-[0.3em] mb-8">Discover our Exclusive Collection</p>
+                </div>
+            </div>
+        `;
+        dotsContainer.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = `<div class="hero-slider">` + banners.map(b => `
+        <div class="hero-slide">
+            <img src="${getOptimizedUrl(b.img)}" class="absolute inset-0 w-full h-full object-cover brightness-90">
+            <div class="absolute inset-0 bg-gradient-to-r from-[#8b6c31]/60 via-[#8b6c31]/10 to-transparent flex flex-col justify-center px-8 md:px-16">
+                <h2 class="text-white text-3xl md:text-5xl font-serif italic mb-2 tracking-wide">${b.title || ""}</h2>
+                <p class="text-white/80 text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">${b.subtitle || ""}</p>
+            </div>
+        </div>
+    `).join('') + `</div>`;
+
+    dotsContainer.innerHTML = banners.map((_, i) => `<div class="slider-dot ${i === 0 ? 'active' : ''}" onclick="window.scrollToSlide(${i})"></div>`).join('');
+
+    const slider = container.querySelector('.hero-slider');
+    if (slider) {
+        slider.addEventListener('scroll', () => {
+            const index = Math.round(slider.scrollLeft / slider.clientWidth);
+            const dots = dotsContainer.querySelectorAll('.slider-dot');
+            dots.forEach((dot, i) => dot.classList.toggle('active', i === index));
+        });
+    }
+}
+
+window.scrollToSlide = (index) => {
+    const slider = document.querySelector('.hero-slider');
+    if (slider) {
+        slider.scrollTo({ left: index * slider.clientWidth, behavior: 'smooth' });
+    }
+};
+
 window.renderAdminUI = () => {
     const pList = document.getElementById('admin-product-list');
     const cList = document.getElementById('admin-category-list');
@@ -914,7 +1204,7 @@ window.renderAdminUI = () => {
 
         grouped[cat].forEach(p => {
             const stockTag = p.inStock !== false ? '<span class="stock-badge in">In Stock</span>' : '<span class="stock-badge out">Out of Stock</span>';
-            const pinIcon = p.isPinned ? '<div class="absolute top-3 left-3 w-7 h-7 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg"><i class="fa-solid fa-thumbtack text-[10px]"></i></div>' : '';
+            let pinIcon = '';
 
             pHtml += `
         <div class="admin-product-card group">
@@ -961,6 +1251,65 @@ window.renderAdminUI = () => {
     </div>
 </div>
 `).join('') || `<p class="text-center py-20 text-[11px] text-gray-300 italic">No Categories</p>`;
+
+    const bList = document.getElementById('admin-banner-list');
+    if (bList) {
+        bList.innerHTML = DATA.b.sort((a, b) => (a.order || 0) - (b.order || 0)).map(b => `
+<div class="flex items-center gap-5 p-5 bg-gray-50 rounded-[2rem] border border-gray-100 relative">
+    <img src="${getOptimizedUrl(b.img)}" class="w-24 h-14 rounded-xl object-cover border-4 border-white shadow-sm">
+    <div class="flex-1">
+        <div class="font-bold text-[13px] uppercase truncate max-w-[150px]">${b.title || 'Untitled'}</div>
+        <div class="text-[9px] text-gray-400 uppercase tracking-widest mt-1">Order: ${b.order || 0}</div>
+    </div>
+    <div class="flex gap-2">
+        <button onclick="editBanner('${b.id}')" class="w-10 h-10 flex items-center justify-center bg-white rounded-full shadow-lg text-gray-400 hover:text-black transition-all">
+            <i class="fa-solid fa-pen text-[10px]"></i>
+        </button>
+        <button onclick="deleteBanner('${b.id}')" class="w-10 h-10 flex items-center justify-center bg-red-50 rounded-full text-red-200 hover:text-red-500 transition-all">
+            <i class="fa-solid fa-trash text-[10px]"></i>
+        </button>
+    </div>
+</div>
+`).join('') || `<p class="text-center py-20 text-[11px] text-gray-300 italic">No Banners</p>`;
+    }
+
+    // Settings
+    const nameInput = document.getElementById('store-name');
+    const logoInput = document.getElementById('store-logo');
+    if (nameInput) nameInput.value = DATA.settings?.storeName || 'LASZON GIFTS';
+    if (logoInput) logoInput.value = DATA.settings?.logo || '';
+};
+
+function applySettings() {
+    const container = document.getElementById('logo-container');
+    if (!container) return;
+
+    if (DATA.settings?.logo) {
+        container.innerHTML = `<img src="${getOptimizedUrl(DATA.settings.logo, 'h_80,f_auto,q_auto')}" class="h-8 md:h-10 object-contain" alt="${DATA.settings.storeName}">`;
+    } else {
+        container.innerHTML = `<h1 class="brand-logo text-[#333333]">${DATA.settings?.storeName || 'LASZON GIFTS'}</h1>`;
+    }
+}
+
+window.saveSettings = async () => {
+    const btn = document.getElementById('s-save-btn');
+    const settings = {
+        storeName: document.getElementById('store-name').value || 'LASZON GIFTS',
+        logo: document.getElementById('store-logo').value || '',
+        updatedAt: Date.now()
+    };
+
+    if (btn) { btn.disabled = true; btn.innerText = "Saving..."; }
+    try {
+        await setDoc(settingsDoc, settings);
+        DATA.settings = settings;
+        applySettings();
+        showToast("Settings Saved!");
+    } catch (e) {
+        showToast("Error saving settings");
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerText = "Save Settings"; }
+    }
 };
 
 window.handleCategoryRowScroll = (el) => {
@@ -972,9 +1321,11 @@ window.handleCategoryRowScroll = (el) => {
 };
 
 window.applyFilter = (id) => {
+    if (id === 'wishlist') return toggleWishlistSidebar();
     state.filter = id;
     state.search = '';
     state.scrollPos = 0;
+    safePushState({ f: id, p: null });
     renderHome();
 };
 window.showSearchSuggestions = (show) => {
@@ -1014,20 +1365,24 @@ window.clearCustomerSearch = () => {
     if (input) input.focus();
 };
 window.applyPriceSort = (sort) => { state.sort = sort; renderHome(); };
-window.showAdminPanel = () => { document.getElementById('admin-panel').classList.remove('hidden'); document.body.style.overflow = 'hidden'; renderAdminUI(); };
-window.hideAdminPanel = () => { document.getElementById('admin-panel').classList.add('hidden'); document.body.style.overflow = 'auto'; };
-
-window.switchAdminTab = (tab) => {
-    const isProd = tab === 'products';
-    document.getElementById('admin-product-section').classList.toggle('hidden', !isProd);
-    document.getElementById('admin-category-section').classList.toggle('hidden', isProd);
-    document.getElementById('admin-product-list-container').classList.toggle('hidden', !isProd);
-    document.getElementById('admin-category-list').classList.toggle('hidden', isProd);
-    document.getElementById('product-admin-filters').classList.toggle('hidden', !isProd);
-    document.getElementById('tab-p').className = isProd ? "flex-1 py-4 rounded-xl text-[10px] font-bold uppercase bg-white shadow-xl" : "flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400";
-    document.getElementById('tab-c').className = !isProd ? "flex-1 py-4 rounded-xl text-[10px] font-bold uppercase bg-white shadow-xl" : "flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400";
-    document.getElementById('list-title').innerText = isProd ? "Live Inventory" : "Existing Categories";
+window.showAdminPanel = () => {
+    const panel = document.getElementById('admin-panel');
+    if (!panel) return;
+    panel.classList.replace('hidden', 'flex');
+    setTimeout(() => panel.classList.add('active'), 10);
+    document.body.style.overflow = 'hidden';
+    renderAdminUI();
 };
+window.hideAdminPanel = () => {
+    const panel = document.getElementById('admin-panel');
+    if (!panel) return;
+    panel.classList.remove('active');
+    setTimeout(() => {
+        panel.classList.replace('flex', 'hidden');
+    }, 400);
+    document.body.style.overflow = 'auto';
+};
+
 
 /* CATEGORY PICKER LOGIC */
 
@@ -1086,10 +1441,10 @@ window.handleDrop = async (e, fieldId) => {
 async function directCloudinaryUpload(file) {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', 'speed_preset');
-    formData.append('cloud_name', 'dxkcvm2yh');
+    formData.append('upload_preset', 'laszon_preset');
+    formData.append('cloud_name', 'dqxrl96d0');
 
-    const res = await fetch(`https://api.cloudinary.com/v1_1/dxkcvm2yh/image/upload`, {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/dqxrl96d0/image/upload`, {
         method: 'POST',
         body: formData
     });
@@ -1108,9 +1463,9 @@ window.cloudinaryUpload = (fieldId) => {
         return;
     }
     cloudinaryWidget = cloudinary.createUploadWidget({
-        cloudName: 'dxkcvm2yh',
-        apiKey: '749457642941763',
-        uploadPreset: 'speed_preset',
+        cloudName: 'dqxrl96d0',
+        apiKey: '228375249571749',
+        uploadPreset: 'laszon_preset',
         sources: ['local', 'url', 'camera'],
         showAdvancedOptions: false,
         cropping: false,
@@ -1134,11 +1489,302 @@ function showToast(msg) {
     setTimeout(() => { t.style.display = 'none'; }, 3000);
 }
 
-function getOptimizedUrl(url) {
+function getOptimizedUrl(url, transform = 'f_auto,q_auto') {
     if (!url || typeof url !== 'string' || !url.includes('cloudinary.com')) return url;
-    if (url.includes('f_auto,q_auto')) return url;
-    // Inject f_auto,q_auto after /upload/
-    return url.replace('/upload/', '/upload/f_auto,q_auto/');
+    if (url.includes('f_auto,q_auto') && transform === 'f_auto,q_auto') return url;
+
+    // If it already has transformations, replace them or handle appropriately
+    // For simplicity, we assume we want to inject our transform after /upload/
+    if (url.includes('/upload/')) {
+        // Remove existing transformation if any and inject new one
+        const parts = url.split('/upload/');
+        const afterUpload = parts[1].split('/');
+        // Check if first part after upload is a transformation string (contains , or w_ etc)
+        if (afterUpload[0].includes('_') || afterUpload[0].includes(',')) {
+            afterUpload.shift(); // Remove old transform
+        }
+        return `${parts[0]}/upload/${transform}/${afterUpload.join('/')}`;
+    }
+    return url;
 }
 
 startSync();
+
+// MOBILE SIDEBAR TOGGLE
+window.toggleMobileSidebar = () => {
+    const sidebar = document.getElementById('mobile-sidebar');
+    if (!sidebar) return;
+    if (sidebar.classList.contains('active')) {
+        sidebar.classList.remove('active');
+        document.body.style.overflow = '';
+        // Reset panel position and hide after transition
+        setTimeout(() => {
+            switchSidebarPanel('main');
+            sidebar.classList.replace('block', 'hidden');
+        }, 300);
+    } else {
+        sidebar.classList.replace('hidden', 'block');
+        setTimeout(() => sidebar.classList.add('active'), 10);
+        document.body.style.overflow = 'hidden';
+        updateSidebarCategories();
+    }
+};
+
+window.switchSidebarPanel = (panelName) => {
+    const mainPanel = document.getElementById('sidebar-panel-main');
+    const catPanel = document.getElementById('sidebar-panel-categories');
+    if (!mainPanel || !catPanel) return;
+
+    if (panelName === 'categories') {
+        mainPanel.classList.add('slide-out');
+        catPanel.classList.add('slide-in');
+    } else {
+        mainPanel.classList.remove('slide-out');
+        catPanel.classList.remove('slide-in');
+    }
+};
+
+
+function updateSidebarCategories() {
+    const container = document.getElementById('mobile-sidebar-categories-list');
+    if (!container) return;
+
+    container.innerHTML = DATA.c.map(c => `
+        <a href="#" onclick="applyFilter('${c.id}'); toggleMobileSidebar()" class="sidebar-nav-link">
+            <span class="w-2 h-2 rounded-full bg-[#121212]/10"></span> ${c.name}
+        </a>
+    `).join('');
+}
+
+// AUTHENTICATION LOGIC
+let isLoginMode = true;
+
+window.handleUserIconClick = () => {
+    if (state.user && !state.user.isAnonymous) {
+        showAdminPanel();
+    } else {
+        toggleAuthModal();
+    }
+};
+
+window.toggleAuthModal = () => {
+    const modal = document.getElementById('auth-modal');
+    if (modal) modal.classList.toggle('hidden');
+    // Blur logic for main app
+    const app = document.getElementById('app');
+    if (modal && !modal.classList.contains('hidden')) {
+        app.classList.add('blur-sm');
+    } else {
+        app.classList.remove('blur-sm');
+    }
+};
+
+window.switchAuthMode = () => {
+    isLoginMode = !isLoginMode;
+    const title = document.getElementById('auth-title');
+    const subtitle = document.getElementById('auth-subtitle');
+    const submitBtn = document.getElementById('auth-submit-btn');
+    const toggleText = document.getElementById('auth-toggle-text');
+
+    if (isLoginMode) {
+        title.innerText = "Welcome Back";
+        subtitle.innerText = "Sign in to save your collection";
+        submitBtn.innerText = "Sign In";
+        toggleText.innerHTML = `Don't have an account? <button onclick="switchAuthMode()" class="text-gold-luxe font-black uppercase tracking-widest ml-1 hover:underline">Create One</button>`;
+    } else {
+        title.innerText = "Join the Club";
+        subtitle.innerText = "Create an account for permanent access";
+        submitBtn.innerText = "Create Account";
+        toggleText.innerHTML = `Already have an account? <button onclick="switchAuthMode()" class="text-gold-luxe font-black uppercase tracking-widest ml-1 hover:underline">Sign In</button>`;
+    }
+};
+
+window.handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('auth-email').value;
+    const password = document.getElementById('auth-password').value;
+    const submitBtn = document.getElementById('auth-submit-btn');
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = isLoginMode ? "Signing In..." : "Creating Account...";
+
+    try {
+        if (isLoginMode) {
+            await signInWithEmailAndPassword(auth, email, password);
+            showToast("Welcome back!");
+        } else {
+            await createUserWithEmailAndPassword(auth, email, password);
+            showToast("Account created successfully!");
+        }
+        toggleAuthModal();
+        document.getElementById('auth-form').reset();
+    } catch (err) {
+        console.error(err);
+        let msg = "Authentication failed";
+        if (err.code === 'auth/wrong-password') msg = "Incorrect password";
+        else if (err.code === 'auth/user-not-found') msg = "Account not found";
+        else if (err.code === 'auth/email-already-in-use') msg = "Email already registered";
+        else if (err.code === 'auth/weak-password') msg = "Password is too weak";
+        else if (err.code === 'auth/invalid-email') msg = "Invalid email address";
+        showToast(msg);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = isLoginMode ? "Sign In" : "Create Account";
+    }
+};
+
+function updateUserUI() {
+    const userBtn = document.getElementById('user-btn');
+    if (!userBtn) return;
+
+    if (state.user && !state.user.isAnonymous) {
+        userBtn.innerHTML = `<i class="fa-solid fa-user-check text-sm text-gold-luxe"></i>`;
+        userBtn.classList.add('border-gold-luxe/30');
+    } else {
+        userBtn.innerHTML = `<i class="fa-solid fa-user text-sm opacity-40"></i>`;
+        userBtn.classList.remove('border-gold-luxe/30');
+    }
+}
+
+// --- CART LOGIC ---
+window.toggleCart = () => {
+    const sidebar = document.getElementById('cart-sidebar');
+    if (!sidebar) return;
+    sidebar.classList.toggle('hidden');
+    if (!sidebar.classList.contains('hidden')) renderCart();
+};
+
+window.addToCart = (id) => {
+    if (!state.cart.includes(id)) {
+        state.cart.push(id);
+        showToast('Added to Cart');
+        updateCartBadge();
+    } else {
+        showToast('Already in Cart');
+    }
+};
+
+window.removeFromCart = (id) => {
+    state.cart = state.cart.filter(i => i !== id);
+    renderCart();
+    updateCartBadge();
+    showToast('Removed from Cart');
+};
+
+function updateCartBadge() {
+    const badge = document.getElementById('nav-cart-count');
+    if (!badge) return;
+    if (state.cart.length > 0) {
+        badge.innerText = state.cart.length;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+function renderCart() {
+    const list = document.getElementById('cart-items-list');
+    const countEl = document.getElementById('cart-total-count');
+    if (!list || !countEl) return;
+
+    countEl.innerText = state.cart.length;
+
+    if (state.cart.length === 0) {
+        list.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-center opacity-20">
+                <i class="fa-solid fa-cart-shopping text-5xl mb-4"></i>
+                <p class="text-[10px] font-black uppercase tracking-widest">Your cart is empty</p>
+            </div>
+        `;
+        return;
+    }
+
+    const cartProducts = state.cart.map(id => DATA.p.find(p => p.id === id)).filter(p => p);
+
+    list.innerHTML = cartProducts.map(p => `
+        <div class="flex items-center gap-4 border-b border-gray-50 pb-4">
+            <img src="${getOptimizedUrl(p.img)}" class="cart-item-img">
+            <div class="flex-1">
+                <h4 class="text-[12px] font-bold text-[#333333]">${p.name}</h4>
+                <p class="text-[10px] text-[#333333]/40">${p.price} AED</p>
+            </div>
+            <button onclick="removeFromCart('${p.id}')" class="text-gray-300 hover:text-red-500 transition-all">
+                <i class="fa-solid fa-trash-can text-sm"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+window.checkoutCart = () => {
+    if (state.cart.length === 0) return showToast('Cart is empty');
+
+    let msg = 'Hello Laszon Gifts, I am interested in these items:\n\n';
+    state.cart.forEach((id, idx) => {
+        const p = DATA.p.find(x => x.id === id);
+        if (p) {
+            msg += (idx + 1) + '. ' + p.name + ' (' + p.price + ' AED)\n';
+        }
+    });
+
+    const wpUrl = `https://wa.me/971524317929?text=${encodeURIComponent(msg)}`;
+    window.open(wpUrl, '_blank');
+};
+
+window.toggleWishlistSidebar = () => {
+    const sidebar = document.getElementById('wishlist-sidebar');
+    const app = document.getElementById('app');
+    if (!sidebar) return;
+    const isHidden = sidebar.classList.contains('hidden');
+
+    if (isHidden) {
+        sidebar.classList.remove('hidden');
+        renderWishlistSidebar();
+        if (app) app.classList.add('blur-sm');
+    } else {
+        sidebar.classList.add('hidden');
+        if (app) app.classList.remove('blur-sm');
+    }
+};
+
+function renderWishlistSidebar() {
+    const list = document.getElementById('wishlist-items-list');
+    if (!list) return;
+
+    if (state.wishlist.length === 0) {
+        list.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-center opacity-20">
+                <i class="fa-solid fa-heart text-5xl mb-4"></i>
+                <p class="text-[10px] font-black uppercase tracking-widest">No favorites yet</p>
+            </div>
+        `;
+        return;
+    }
+
+    const items = state.wishlist.map(id => {
+        const p = DATA.p.find(x => x.id === id);
+        if (!p) return '';
+        return `
+            <div class="flex items-center gap-4 group fade-in">
+                <div class="w-20 h-20 rounded-2xl overflow-hidden shadow-lg shadow-black/5 border border-gray-50 bg-gray-50">
+                    <img src="${getOptimizedUrl(p.img)}" class="w-full h-full object-cover">
+                </div>
+                <div class="flex-1">
+                    <h4 class="text-[11px] font-bold text-[#333333] mb-1">${p.name}</h4>
+                    <p class="text-[10px] font-black text-[#333333]/40 mb-3">${p.price} AED</p>
+                    <div class="flex gap-2">
+                        <button onclick="addToCart('${p.id}')" 
+                            class="text-[8px] font-black uppercase tracking-widest text-white bg-[#121212] px-3 py-1.5 rounded-lg active:scale-95 transition-all">
+                            Add to Cart
+                        </button>
+                        <button onclick="toggleWishlist('${p.id}')" 
+                            class="text-[8px] font-black uppercase tracking-widest text-red-500 bg-red-50 px-3 py-1.5 rounded-lg active:scale-95 transition-all">
+                            Remove
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    list.innerHTML = items;
+}
