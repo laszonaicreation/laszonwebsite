@@ -230,7 +230,10 @@ async function refreshData(isNavigationOnly = false) {
         renderAdminUI();
 
         // Preload in background (non-blocking)
-        const iconsToLoad = DATA.c.map(c => getOptimizedUrl(c.img)).filter(u => u && u !== 'img/').slice(0, 10);
+        const gridTransform = 'w_450,c_fill,f_auto,q_auto:eco';
+        const iconTransform = 'w_120,c_fill,f_auto,q_auto:eco';
+
+        const iconsToLoad = DATA.c.map(c => getOptimizedUrl(c.img, iconTransform)).filter(u => u && u !== 'img/').slice(0, 10);
         const stockFilter = (items) => items.filter(p => p.inStock !== false);
         let filteredForPreload = [];
         if (state.selectionId) filteredForPreload = DATA.p.filter(p => state.selected.includes(p.id));
@@ -245,7 +248,7 @@ async function refreshData(isNavigationOnly = false) {
             return (b.updatedAt || 0) - (a.updatedAt || 0);
         });
 
-        const prodsToLoad = filteredForPreload.slice(0, 8).map(p => getOptimizedUrl(p.img)).filter(u => u && u !== 'img/');
+        const prodsToLoad = filteredForPreload.slice(0, 8).map(p => getOptimizedUrl(p.img, gridTransform)).filter(u => u && u !== 'img/');
         const allToPreload = [...new Set([...prodsToLoad, ...iconsToLoad])];
 
         // Fire and forget (don't await)
@@ -418,7 +421,7 @@ function renderHome() {
     ` + DATA.c.map(c => `
         <div class="category-item ${state.filter === c.id ? 'active' : ''}" onclick="applyFilter('${c.id}')">
             <div class="category-img-box">
-                <img src="${getOptimizedUrl(c.img, 'w_200,c_fill,f_auto,q_auto')}" alt="${c.name}" class="w-full h-full object-cover" loading="lazy">
+                <img src="${getOptimizedUrl(c.img, 'w_120,c_fill,f_auto,q_auto:eco')}" alt="${c.name}" class="w-full h-full object-cover" loading="lazy">
             </div>
             <span class="category-label">${c.name}</span>
         </div>
@@ -514,7 +517,7 @@ function renderHome() {
                         <div class="img-container mb-4 overflow-hidden" 
                              style="background-image: url('${getOptimizedUrl(p.img, 'w_50,e_blur:1000,f_auto,q_10')}'); background-size: cover;">
                             ${pinIcon}
-                            <img src="${getOptimizedUrl(p.img, 'w_600,c_fill,f_auto,q_auto')}" 
+                            <img src="${getOptimizedUrl(p.img, 'w_450,c_fill,f_auto,q_auto:eco')}" 
                                  ${idx < 8 ? 'fetchpriority="high" loading="eager"' : 'fetchpriority="low" loading="lazy"'}
                                  decoding="async"
                                  onload="this.classList.add('loaded')"
@@ -588,7 +591,7 @@ window.viewDetail = (id, skipHistory = false) => {
 
     const thumbs = [p.img, p.img2, p.img3].filter(u => u && u !== 'img/').map(imgUrl => `
         <div class="thumb-box ${imgUrl === p.img ? 'active' : ''}" onclick="switchImg('${imgUrl}', this)">
-            <img src="${getOptimizedUrl(imgUrl)}">
+            <img src="${getOptimizedUrl(imgUrl, 'w_150,c_fill,f_auto,q_auto')}">
         </div>
     `).join('');
 
@@ -596,20 +599,18 @@ window.viewDetail = (id, skipHistory = false) => {
         <div class="detail-view-container fade-in pt-4 pb-32">
             <div class="max-w-4xl mx-auto px-6">
                 <!-- ELEGANT BACK BUTTON -->
-                <button onclick="goBackToHome()" class="mb-8 flex items-center gap-2 text-[#333333]/40 hover:text-[#333333] transition-all group">
-                    <div class="w-8 h-8 rounded-full border border-black/10 flex items-center justify-center group-hover:bg-black/5 transition-all">
-                        <i class="fa-solid fa-arrow-left text-xs"></i>
-                    </div>
-                    <span class="text-[9px] font-black uppercase tracking-[0.2em]">Back to Gallery</span>
-                </button>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-20">
                     <div class="space-y-6">
                         <div class="zoom-img-container shadow-2xl shadow-black/5 border-none rounded-[2.5rem]" 
+                             style="background-image: url('${getOptimizedUrl(p.img, 'w_50,e_blur:1000,f_auto,q_10')}'); background-size: cover;"
                              onmousemove="handleZoom(event, this)" 
                              onmouseleave="resetZoom(this)"
                              onclick="openFullScreen('${p.img}')">
-                            <img id="main-detail-img" src="${p.img}" alt="${p.name}">
+                            <img id="main-detail-img" 
+                                 src="${getOptimizedUrl(p.img, 'f_auto,q_auto:best')}" 
+                                 onload="this.classList.add('loaded')"
+                                 alt="${p.name}">
                         </div>
                         <div class="thumb-grid no-scrollbar overflow-x-auto pb-4">
                             ${thumbs}
@@ -996,9 +997,12 @@ window.inquireOnWhatsApp = (id) => {
 window.switchImg = (src, el) => {
     const main = document.getElementById('main-detail-img');
     if (main) {
-        main.src = getOptimizedUrl(src);
+        main.classList.remove('loaded');
+        main.src = getOptimizedUrl(src, 'f_auto,q_auto:best');
         // Update click handler for full-screen preview
         main.closest('.zoom-img-container')?.setAttribute('onclick', `openFullScreen('${src}')`);
+        // Update thumb background for the main box
+        main.closest('.zoom-img-container').style.backgroundImage = `url('${getOptimizedUrl(src, 'w_50,e_blur:1000,f_auto,q_10')}')`;
     }
     document.querySelectorAll('.thumb-box').forEach(x => x.classList.remove('active'));
     if (el) el.classList.add('active');
@@ -1148,7 +1152,7 @@ function renderHeroSlider() {
 
     container.innerHTML = `<div class="hero-slider">` + banners.map(b => `
         <div class="hero-slide">
-            <img src="${getOptimizedUrl(b.img)}" class="absolute inset-0 w-full h-full object-cover brightness-90">
+            <img src="${getOptimizedUrl(b.img, 'w_1200,c_fill,f_auto,q_auto')}" class="absolute inset-0 w-full h-full object-cover brightness-90">
             <div class="absolute inset-0 bg-gradient-to-r from-[#8b6c31]/60 via-[#8b6c31]/10 to-transparent flex flex-col justify-center px-8 md:px-16">
                 <h2 class="text-white text-3xl md:text-5xl font-serif italic mb-2 tracking-wide">${b.title || ""}</h2>
                 <p class="text-white/80 text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">${b.subtitle || ""}</p>
