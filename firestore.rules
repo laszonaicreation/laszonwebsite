@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if the user is the admin
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'laszonaicreation@gmail.com';
+    }
+
+    // --- Public Content (Read by everyone, written by Admin) ---
+    match /artifacts/{appId}/public/data/products/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /artifacts/{appId}/public/data/categories/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /artifacts/{appId}/public/data/banners/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /artifacts/{appId}/public/data/config/settings {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- Shared Selections (Created by users, read by anyone with a link) ---
+    match /artifacts/{appId}/public/data/selections/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- User Profiles & Account Data (Wishlist/Cart) ---
+    match /artifacts/{appId}/public/data/users/{userId} {
+      // Users can read/write their own profiles; Admin can view/manage them for business insights
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      match /{allSegments=**} {
+        allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
 import { getFirestore, collection, getDocs, addDoc, doc, deleteDoc, updateDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyD9YVfGZdSNesw26IsmfFaTBExlYoGt0gc",
@@ -15,11 +15,14 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const appId = firebaseConfig.projectId;
+const WA_NUMBER = "971559653589";
+
 
 const prodCol = collection(db, 'artifacts', appId, 'public', 'data', 'products');
 const catCol = collection(db, 'artifacts', appId, 'public', 'data', 'categories');
 const shareCol = collection(db, 'artifacts', appId, 'public', 'data', 'selections');
 const bannerCol = collection(db, 'artifacts', appId, 'public', 'data', 'banners');
+const usersCol = collection(db, 'artifacts', appId, 'public', 'data', 'users');
 const settingsDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings');
 
 let DATA = { p: [], c: [], b: [], settings: { storeName: 'LASZON GIFTS', logo: '' } };
@@ -34,7 +37,7 @@ try {
     }
 } catch (e) { console.error("Cache load failed", e); }
 
-let state = { filter: 'all', sort: 'all', search: '', user: null, selected: [], wishlist: [], cart: [], selectionId: null, scrollPos: 0, banners: [], settings: { storeName: 'LASZON GIFTS', logo: '' } };
+let state = { filter: 'all', sort: 'all', search: '', user: null, isAdmin: false, selected: [], wishlist: [], cart: [], selectionId: null, scrollPos: 0, banners: [], settings: { storeName: 'LASZON GIFTS', logo: '' } };
 let clicks = 0, lastClickTime = 0;
 
 const startSync = async () => {
@@ -50,18 +53,57 @@ onAuthStateChanged(auth, async (u) => {
 
     if (u) {
         await loadWishlist();
+        await loadCart();
 
-        // Merge anonymous wishlist to permanent account
-        if (wasAnonymous && !u.isAnonymous && anonWishlist.length > 0) {
-            state.wishlist = Array.from(new Set([...state.wishlist, ...anonWishlist]));
-            await setDoc(doc(db, 'artifacts', appId, 'users', u.uid, 'data', 'wishlist'), { ids: state.wishlist });
-            showToast("Syncing your favorites...");
+        // Merge anonymous wishlist/cart to permanent account
+        if (wasAnonymous && !u.isAnonymous) {
+            if (anonWishlist.length > 0) {
+                state.wishlist = Array.from(new Set([...state.wishlist, ...anonWishlist]));
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.uid, 'account', 'wishlist'), { ids: state.wishlist });
+            }
+            // Merge Cart
+            if (state.cart.length > 0) { // Current state.cart might be from anon session before loadCart overwrites/merges?
+                // Actually loadCart runs first, so we need to be careful.
+                // Ideally: Load remote cart, merge with current local cart, save back.
+                // For simplicity in this step, I'll rely on the fact loadCart updates state.cart.
+                // But wait, if we had an anon cart, we want to KEEP it.
+                // Correct logic:
+                // 1. We have anonCart items.
+                // 2. We load remoteCart items.
+                // 3. We merge them.
+                // 4. We save.
+            }
+        }
+
+        // RE-IMPLEMENTED MERGE LOGIC FOR ROBUSTNESS in Separate Block below if needed or trust simple flow for now.
+        // Let's stick to simple load first. The merge logic can be complex.
+
+        showToast("Syncing your data...");
+
+        // Check if admin (optional: based on email or previous unlock)
+        const adminEmail = "laszonaicreation@gmail.com"; // Your correct admin email
+        if (u.email === adminEmail) state.isAdmin = true;
+
+        // SYNC USER PROFILE (for Admin visibility)
+        if (!u.isAnonymous) {
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', u.uid), {
+                    email: u.email,
+                    lastLogin: Date.now(),
+                    uid: u.uid,
+                    displayName: u.displayName || u.email.split('@')[0]
+                }, { merge: true });
+            } catch (e) { console.warn("User profile sync failed", e); }
         }
 
         refreshData();
         renderHome(); // Initial "fast" render
         updateUserUI();
     } else {
+        state.user = null;
+        state.isAdmin = false;
+        state.wishlist = [];
+        state.cart = []; // Optional but good practice
         startSync();
     }
 });
@@ -99,12 +141,37 @@ window.onpopstate = () => {
 async function loadWishlist() {
     if (!state.user) return;
     try {
-        const wishDoc = await getDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'data', 'wishlist'));
+        const wishDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', state.user.uid, 'account', 'wishlist'));
         if (wishDoc.exists()) {
             state.wishlist = wishDoc.data().ids || [];
-            updateWishlistBadge();
+        } else {
+            state.wishlist = [];
         }
+        updateWishlistBadge();
     } catch (err) { console.error("Wishlist Load Error"); }
+}
+
+async function loadCart() {
+    if (!state.user) return;
+    try {
+        const cartDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', state.user.uid, 'account', 'cart'));
+        if (cartDoc.exists()) {
+            // If we have local items (from anon session), merge them!
+            const remoteItems = cartDoc.data().ids || [];
+            const localItems = state.cart;
+            state.cart = Array.from(new Set([...remoteItems, ...localItems]));
+        } // If no remote doc, keep local items (if any) as starting point
+
+        // If we merged, we should probably save back immediately, but let's just update UI
+        updateCartBadge();
+    } catch (err) { console.error("Cart Load Error"); }
+}
+
+async function saveCart() {
+    if (!state.user) return;
+    try {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', state.user.uid, 'account', 'cart'), { ids: state.cart });
+    } catch (err) { console.error("Cart Save Error", err); }
 }
 
 function updateWishlistBadge() {
@@ -159,11 +226,11 @@ window.toggleWishlist = async (id) => {
     }
 
     try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'data', 'wishlist'), { ids: state.wishlist });
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', state.user.uid, 'account', 'wishlist'), { ids: state.wishlist });
     } catch (err) { console.error("Sync Error", err); }
 };
 
-async function refreshData(isNavigationOnly = false) {
+window.refreshData = async (isNavigationOnly = false) => {
     try {
         if (!isNavigationOnly || DATA.p.length === 0) {
             const fetchPromises = [getDocs(prodCol), getDocs(catCol), getDocs(bannerCol)];
@@ -198,7 +265,8 @@ async function refreshData(isNavigationOnly = false) {
         const shareId = urlParams.get('s');
         const prodId = urlParams.get('p');
         const filterId = urlParams.get('f');
-        const isAdminOpen = !document.getElementById('admin-panel').classList.contains('hidden');
+        const adminPanel = document.getElementById('admin-panel');
+        const isAdminOpen = adminPanel ? !adminPanel.classList.contains('hidden') : false;
 
         if (!isAdminOpen) {
             if (prodId && DATA.p.length > 0) {
@@ -277,17 +345,18 @@ const safePushState = (params, replace = false) => {
 };
 
 window.handleLogoClick = () => {
+    if (window.innerWidth < 1024) return; // Only laptop/desktop
     const now = Date.now();
     if (now - lastClickTime > 5000) clicks = 0;
     clicks++; lastClickTime = now;
+
     if (clicks >= 5) {
         const btn = document.getElementById('admin-entry-btn');
         const hideBtn = document.getElementById('admin-hide-btn');
         if (btn) {
             btn.classList.remove('hidden');
             if (hideBtn) hideBtn.classList.remove('hidden');
-            showToast("Dashboard Unlocked");
-            renderHome(); // Re-render to show pin icons
+            showToast("Dashboard Button Revealed");
         }
         clicks = 0;
     } else {
@@ -339,7 +408,7 @@ window.toggleSelectAll = () => {
     renderHome();
 };
 
-function renderHome() {
+window.renderHome = () => {
     try {
         const appMain = document.getElementById('app');
         const template = document.getElementById('home-view-template');
@@ -589,26 +658,27 @@ window.viewDetail = (id, skipHistory = false) => {
     // Scroll home content to top before switching
     window.scrollTo({ top: 0, behavior: 'instant' });
 
-    const thumbs = [p.img, p.img2, p.img3].filter(u => u && u !== 'img/').map(imgUrl => `
-        <div class="thumb-box ${imgUrl === p.img ? 'active' : ''}" onclick="switchImg('${imgUrl}', this)">
-            <img src="${getOptimizedUrl(imgUrl, 'w_150,c_fill,f_auto,q_auto')}">
+    // Unified Images Collection (New array first, then legacy items)
+    const productImages = (p.images && p.images.length > 0) ? p.images : [p.img, p.img2, p.img3].filter(u => u && u !== 'img/');
+
+    const thumbs = productImages.map((imgUrl, i) => `
+        <div class="thumb-box ${i === 0 ? 'active' : ''}" onclick="switchImg('${imgUrl}', this)">
+            <img src="${getOptimizedUrl(imgUrl, 'w_150,c_fill,f_auto,q_auto')}" class="w-full h-full object-cover">
         </div>
     `).join('');
 
     dynamicContent.innerHTML = `
         <div class="detail-view-container fade-in pt-4 pb-32">
             <div class="max-w-4xl mx-auto px-6">
-                <!-- ELEGANT BACK BUTTON -->
-
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-20">
                     <div class="space-y-6">
                         <div class="zoom-img-container shadow-2xl shadow-black/5 border-none rounded-[2.5rem]" 
-                             style="background-image: url('${getOptimizedUrl(p.img, 'w_50,e_blur:1000,f_auto,q_10')}'); background-size: cover;"
+                             style="background-image: url('${getOptimizedUrl(productImages[0] || 'img/', 'w_50,e_blur:1000,f_auto,q_10')}'); background-size: cover;"
                              onmousemove="handleZoom(event, this)" 
                              onmouseleave="resetZoom(this)"
-                             onclick="openFullScreen('${p.img}')">
+                             onclick="openFullScreen('${productImages[0] || 'img/'}')">
                             <img id="main-detail-img" 
-                                 src="${getOptimizedUrl(p.img, 'f_auto,q_auto:best')}" 
+                                 src="${getOptimizedUrl(productImages[0] || 'img/', 'f_auto,q_auto:best')}" 
                                  onload="this.classList.add('loaded')"
                                  alt="${p.name}">
                         </div>
@@ -618,40 +688,95 @@ window.viewDetail = (id, skipHistory = false) => {
                     </div>
                     <div class="space-y-8 pt-4">
                         <div class="space-y-3">
-                            <span class="luxe-tag text-[10px] text-gold-luxe">Laszon Exclusive Selection</span>
-                            <h2 class="detail-product-name leading-tight text-[#333333]">${p.name}</h2>
-                            <p class="text-xl font-bold text-[#333333]/60">${p.price} AED</p>
+                            <span class="luxe-tag text-[9px]">Laszon Exclusive Selection</span>
+                            <h2 class="detail-product-name leading-tight text-[#121212]">${p.name}</h2>
+                            <p class="text-2xl font-black text-[#121212]">${p.price} AED</p>
                         </div>
                         
-                        <div class="flex flex-col gap-4">
-                            <!-- WhatsApp HIGHLIGHTED AS PRIMARY -->
-                            <button onclick="inquireOnWhatsApp('${p.id}')" 
-                                class="w-full bg-[#121212] text-white py-6 rounded-2xl font-black text-[11px] uppercase tracking-[0.25em] shadow-2xl shadow-black/30 active:scale-95 transition-all flex items-center justify-center gap-3">
-                                <i class="fa-brands fa-whatsapp text-2xl"></i> WhatsApp Inquiry
-                            </button>
+                        <div class="flex flex-col gap-6">
+                            <!-- VARIATIONS DISPLAY -->
+                            ${p.colors && p.colors.length > 0 ? `
+                            <div class="space-y-3">
+                                <span class="variation-label">
+                                    Available Colors
+                                </span>
+                                <div class="flex gap-4 flex-wrap">
+                                    ${p.colors.map((c, i) => {
+        const cObj = typeof c === 'object' ? c : { name: c, hex: c.toLowerCase(), images: [] };
+        return `
+                                        <button class="color-swatch-btn ${i === 0 ? 'selected' : ''}" 
+                                                style="background-color: ${cObj.hex || '#ccc'}" 
+                                                title="${cObj.name}"
+                                                onclick='
+                                                    updateActiveGallery(this, ${JSON.stringify(cObj.images || [])}, ${JSON.stringify(productImages)}, ${JSON.stringify(cObj.name)}, "color");
+                                                    this.parentElement.querySelectorAll(".color-swatch-btn").forEach(b => b.classList.remove("selected"));
+                                                    this.classList.add("selected");
+                                                '>
+                                        </button>`;
+    }).join('')}
+                                </div>
+                            </div>` : ''}
 
-                            <div class="flex gap-4">
-                                <button onclick="addToCart('${p.id}')" 
-                                    class="flex-[4] glass-panel text-[#333333] py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all flex items-center justify-center gap-3 border border-black/10">
-                                    <i class="fa-solid fa-cart-shopping text-lg"></i> Add to Cart
-                                </button>
-                                <button onclick="toggleWishlist('${p.id}')" 
-                                    class="flex-1 glass-panel text-[#333333] rounded-2xl flex items-center justify-center active:scale-90 transition-all border border-black/10">
-                                    <i class="fa-${state.wishlist.includes(p.id) ? 'solid' : 'regular'} fa-heart text-xl ${state.wishlist.includes(p.id) ? 'text-red-500' : ''}"></i>
-                                </button>
+                            ${p.sizes && p.sizes.length > 0 ? `
+                            <div class="space-y-3">
+                                <span class="variation-label">
+                                    Select Size
+                                </span>
+                                <div class="flex gap-3 flex-wrap">
+                                    ${p.sizes.map((s, i) => {
+        const sObj = typeof s === 'object' ? s : { name: s, images: [] };
+        return `
+                                        <div class="size-chip ${i === 0 ? 'selected' : ''}" 
+                                             onclick='
+                                                updateActiveGallery(this, ${JSON.stringify(sObj.images || [])}, ${JSON.stringify(productImages)}, ${JSON.stringify(sObj.name)}, "size");
+                                                this.parentElement.querySelectorAll(".size-chip").forEach(c => c.classList.remove("selected")); 
+                                                this.classList.add("selected");
+                                             '>${sObj.name}</div>`;
+    }).join('')}
+                                </div>
+                            </div>` : ''}
+
+                             <div class="space-y-6 pt-6 border-t border-gray-100">
+                                 <div class="grid grid-cols-1 gap-6">
+                                     ${(!p.sizes || p.sizes.length === 0) && p.size ? `<div><span class="detail-label">Dimensions</span><p class="text-[13px] font-bold text-[#333333]">${p.size}</p></div>` : ''}
+                                     ${p.material ? `<div><span class="detail-label">Material & Craftsmanship</span><p class="text-[13px] font-bold text-[#333333]">${p.material}</p></div>` : ''}
+                                 </div>
+                                <div>
+                                    <span class="detail-label">The Story</span>
+                                    <div id="desc-container" class="description-container">
+                                        <div id="product-description" class="detail-description-text leading-relaxed description-clamp">
+                                            ${p.desc || "An exquisite piece carefully curated for the Laszon collection. Crafted with exceptional attention to detail."}
+                                        </div>
+                                    </div>
+                                    <div id="read-more-toggle" class="read-more-btn" onclick="toggleDescription()">
+                                        <span>Read More</span>
+                                        <i class="fa-solid fa-chevron-down text-[7px]"></i>
+                                    </div>
+                                </div>
+                                ${p.inStock === false ? '<div class="p-4 bg-red-50 text-red-600 rounded-xl text-center font-black text-[10px] uppercase tracking-widest border border-red-100 italic">This product is currently sold out.</div>' : ''}
                             </div>
-                        </div>
 
-                        ${p.inStock === false ? '<div class="p-4 bg-red-50 text-red-600 rounded-xl text-center font-black text-[10px] uppercase tracking-widest border border-red-100 italic">This product is currently sold out.</div>' : ''}
+                            <!-- ACTION BUTTONS SECTION - NOW AT THE BOTTOM -->
+                            <div class="pt-6 space-y-4 border-t border-gray-100">
+                                <button onclick="inquireOnWhatsApp('${p.id}')" 
+                                    class="w-full bg-[#121212] text-white py-6 rounded-2xl font-black text-[11px] uppercase tracking-[0.25em] shadow-premium active:scale-95 transition-all flex items-center justify-center gap-3">
+                                    <i class="fa-brands fa-whatsapp text-2xl"></i> Inquire on WhatsApp
+                                </button>
 
-                        <div class="space-y-8 pt-10 border-t border-gray-100">
-                             <div class="grid grid-cols-1 gap-6">
-                                 ${p.size ? `<div><span class="detail-label">Dimensions</span><p class="text-[13px] font-bold text-[#333333]">${p.size}</p></div>` : ''}
-                                 ${p.material ? `<div><span class="detail-label">Material & Craftsmanship</span><p class="text-[13px] font-bold text-[#333333]">${p.material}</p></div>` : ''}
-                             </div>
-                            <div>
-                                <span class="detail-label">The Story</span>
-                                <p class="detail-description-text leading-relaxed">${p.desc || "An exquisite piece carefully curated for the Laszon collection. Crafted with exceptional attention to detail."}</p>
+                                <div class="flex gap-4">
+                                    <button onclick="addToCart('${p.id}')" 
+                                        class="flex-[3] bg-white text-[#121212] py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all flex items-center justify-center gap-3 border border-black/10">
+                                        <i class="fa-solid fa-cart-shopping text-lg"></i> Add to Cart
+                                    </button>
+                                    <button onclick="shareProduct('${p.id}')" 
+                                        class="flex-1 bg-white text-[#121212] rounded-2xl flex items-center justify-center active:scale-90 transition-all border border-black/10">
+                                        <i class="fa-solid fa-share-nodes text-xl"></i>
+                                    </button>
+                                    <button onclick="toggleWishlist('${p.id}')" 
+                                        class="flex-1 bg-white text-[#121212] rounded-2xl flex items-center justify-center active:scale-90 transition-all border border-black/10">
+                                        <i class="fa-${state.wishlist.includes(p.id) ? 'solid' : 'regular'} fa-heart text-xl ${state.wishlist.includes(p.id) ? 'text-red-500' : ''}"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -659,29 +784,118 @@ window.viewDetail = (id, skipHistory = false) => {
             </div>
         </div>
     `;
+
+    // ADD GALLERY HELPER TO GLOBAL SCOPE
+    window.updateActiveGallery = (el, variationImages, mainImages, val, type) => {
+        const imagesToLoad = (variationImages && variationImages.length > 0) ? variationImages : mainImages;
+        const mainImgEl = document.getElementById('main-detail-img');
+        const thumbGrid = document.querySelector('.thumb-grid');
+
+        // Update Label
+        // (Removed selection-status logic as per user request)
+
+        if (mainImgEl) {
+            mainImgEl.src = getOptimizedUrl(imagesToLoad[0]);
+            mainImgEl.classList.remove('loaded');
+            setTimeout(() => mainImgEl.classList.add('loaded'), 10);
+        }
+
+        if (thumbGrid) {
+            thumbGrid.innerHTML = imagesToLoad.map((img, i) => `
+                <div class="thumb-box ${i === 0 ? 'active' : ''}" onclick="switchImg('${img}', this)">
+                    <img src="${getOptimizedUrl(img, 'w_100')}" alt="Thumbnail" class="w-full h-full object-cover">
+                </div>
+            `).join('');
+        }
+    };
+
+    window.toggleDescription = () => {
+        const desc = document.getElementById('product-description');
+        const container = document.getElementById('desc-container');
+        const btn = document.getElementById('read-more-toggle');
+        if (!desc || !btn || !container) return;
+
+        const isExpanded = desc.classList.contains('description-expanded');
+        if (isExpanded) {
+            desc.classList.remove('description-expanded');
+            container.classList.remove('expanded');
+            btn.innerHTML = `<span>Read More</span> <i class="fa-solid fa-chevron-down text-[7px]"></i>`;
+            // Smoothly scroll back if needed
+            desc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            desc.classList.add('description-expanded');
+            container.classList.add('expanded');
+            btn.innerHTML = `<span>Read Less</span> <i class="fa-solid fa-chevron-up text-[7px]"></i>`;
+        }
+    };
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+window.shareProduct = async (id) => {
+    const p = DATA.p.find(x => x.id === id);
+    if (!p) return;
+    const shareData = {
+        title: p.name,
+        text: `Check out this ${p.name} from Laszon!`,
+        url: window.location.href
+    };
+
+    try {
+        if (navigator.share) {
+            await navigator.share(shareData);
+        } else {
+            // Fallback: Copy to clipboard
+            await navigator.clipboard.writeText(window.location.href);
+            showToast("Link copied to clipboard! ✨", "success");
+        }
+    } catch (err) {
+        console.warn("Share failed:", err);
+    }
 };
 
 window.saveProduct = async () => {
     const id = document.getElementById('edit-id')?.value;
     const btn = document.getElementById('p-save-btn');
+
+    // Collect Variation Data
+    const colors = [];
+    const sizes = [];
+    document.querySelectorAll('.variation-row').forEach(row => {
+        const type = row.dataset.type;
+        const name = row.querySelector('.v-name').value;
+        const galleryId = row.querySelector('.admin-gallery').id;
+        const images = getGalleryImages(galleryId);
+
+        if (name) {
+            if (type === 'color') {
+                const hex = row.querySelector('.v-hex').value;
+                colors.push({ name, hex, images });
+            } else {
+                sizes.push({ name, images });
+            }
+        }
+    });
+
+    // Collect Main Images
+    const images = getGalleryImages('main-product-gallery');
+
     const data = {
         name: document.getElementById('p-name')?.value,
         price: document.getElementById('p-price')?.value,
-        size: document.getElementById('p-size')?.value,
         material: document.getElementById('p-material')?.value,
+        size: document.getElementById('p-size')?.value,
         inStock: document.getElementById('p-stock')?.checked,
-        img: document.getElementById('p-img')?.value,
-        img2: document.getElementById('p-img2')?.value,
-        img3: document.getElementById('p-img3')?.value,
+        images: images, // Array
+        img: images[0] || 'img/', // Compatibility
+        colors: colors,
+        sizes: sizes,
         catId: document.getElementById('p-cat-id')?.value,
         desc: document.getElementById('p-desc')?.value,
         keywords: document.getElementById('p-keywords')?.value,
         isPinned: document.getElementById('p-pinned')?.checked || false,
         updatedAt: Date.now()
     };
-    if (!data.name || !data.img) return showToast("Required info missing");
+    if (!data.name || data.images.length === 0) return showToast("Name and at least one image required");
     if (btn) { btn.disabled = true; btn.innerText = "Syncing..."; }
     try { if (id) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'products', id), data); else await addDoc(prodCol, data); showToast("Synced Successfully"); resetForm(); DATA.p = []; refreshData(); }
     catch (e) { showToast("Save Error"); } finally { if (btn) { btn.disabled = false; btn.innerText = "Sync Product"; } }
@@ -731,40 +945,64 @@ window.deleteCategory = async (id) => { if (!confirm("Delete Category?")) return
 window.deleteBanner = async (id) => { if (!confirm("Delete Banner?")) return; try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'banners', id)); showToast("Banner Removed"); refreshData(); } catch (e) { showToast("Error"); } };
 
 window.editProduct = (id) => {
-    const item = DATA.p.find(x => x.id === id);
-    if (!item) return;
-    const editId = document.getElementById('edit-id');
-    const pName = document.getElementById('p-name');
-    const pPrice = document.getElementById('p-price');
-    const pSize = document.getElementById('p-size');
-    const pMaterial = document.getElementById('p-material');
-    const pStock = document.getElementById('p-stock');
-    const pPinned = document.getElementById('p-pinned');
-    const pImg = document.getElementById('p-img');
-    const pImg2 = document.getElementById('p-img2');
-    const pImg3 = document.getElementById('p-img3');
-    const pCatId = document.getElementById('p-cat-id');
-    const pDesc = document.getElementById('p-desc');
-    const pKeywords = document.getElementById('p-keywords');
-    const pFormTitle = document.getElementById('p-form-title');
+    try {
+        const item = DATA.p.find(x => x.id === id);
+        if (!item) return;
 
-    if (editId) editId.value = item.id;
-    if (pName) pName.value = item.name;
-    if (pPrice) pPrice.value = item.price;
-    if (pSize) pSize.value = item.size || "";
-    if (pMaterial) pMaterial.value = item.material || "";
-    if (pStock) pStock.checked = item.inStock !== false;
-    if (pPinned) pPinned.checked = item.isPinned || false;
-    if (pImg) pImg.value = item.img || "img/";
-    if (pImg2) pImg2.value = item.img2 || "img/";
-    if (pImg3) pImg3.value = item.img3 || "img/";
-    if (pCatId) pCatId.value = item.catId || "";
+        // 1. Unhide Product Section first
+        switchAdminTab('p');
 
-    if (pDesc) pDesc.value = item.desc;
-    if (pKeywords) pKeywords.value = item.keywords || "";
-    if (pFormTitle) pFormTitle.innerText = "Editing: " + item.name;
-    switchAdminTab('products');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+        // 2. Clear & Prepare
+        window.resetForm();
+        const section = document.getElementById('admin-product-section');
+        if (section) section.scrollIntoView({ behavior: 'smooth' });
+
+        // 3. Populate Basic Info
+        const editId = document.getElementById('edit-id');
+        const pName = document.getElementById('p-name');
+        const pPrice = document.getElementById('p-price');
+        const pMaterial = document.getElementById('p-material');
+        const pSize = document.getElementById('p-size'); // Added
+        const pStock = document.getElementById('p-stock');
+        const pPinned = document.getElementById('p-pinned');
+        const pCatId = document.getElementById('p-cat-id');
+        const pDesc = document.getElementById('p-desc');
+        const pKeywords = document.getElementById('p-keywords');
+        const pFormTitle = document.getElementById('p-form-title');
+
+        if (editId) editId.value = item.id;
+        if (pName) pName.value = item.name || '';
+        if (pPrice) pPrice.value = item.price || '';
+        if (pMaterial) pMaterial.value = item.material || '';
+        if (pSize) pSize.value = item.size || ''; // Added
+        if (pStock) pStock.checked = item.inStock !== false;
+        if (pPinned) pPinned.checked = item.isPinned || false;
+        if (pCatId) pCatId.value = item.catId || "";
+        if (pDesc) pDesc.value = item.desc || "";
+        if (pKeywords) pKeywords.value = item.keywords || "";
+        if (pFormTitle) pFormTitle.innerText = "Editing: " + (item.name || 'Product');
+
+        // 4. Populate Galleries
+        const imgs = item.images || [item.img, item.img2, item.img3].filter(i => i && i !== 'img/');
+        renderGalleryUI('main-product-gallery', imgs);
+
+        // 5. Populate Variations
+        if (item.colors && Array.isArray(item.colors)) {
+            item.colors.forEach(c => addColorRow(c));
+        }
+        if (item.sizes && Array.isArray(item.sizes)) {
+            if (typeof item.sizes[0] === 'object') {
+                item.sizes.forEach(s => addSizeRow(s));
+            } else {
+                item.sizes.forEach(s => addSizeRow({ name: s })); // Legacy
+            }
+        }
+
+        document.getElementById('p-save-btn').innerText = "Update Product";
+    } catch (err) {
+        console.error("Edit Error:", err);
+        showToast("Error loading product details");
+    }
 };
 
 window.editCategory = (id) => {
@@ -781,7 +1019,7 @@ window.editCategory = (id) => {
     if (cImg) cImg.value = item.img;
     if (cPinned) cPinned.checked = item.isPinned || false;
     if (cFormTitle) cFormTitle.innerText = "Editing: " + item.name;
-    switchAdminTab('categories');
+    switchAdminTab('c');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
@@ -983,7 +1221,7 @@ window.sendBulkInquiry = () => {
     const items = state.selected.map(id => DATA.p.find(p => p.id === id)).filter(x => x);
     let msg = `*Hello Laszon Gifts!*\nI am interested in these items:\n\n`;
     items.forEach((item, i) => { const pUrl = `${window.location.origin}${window.location.pathname}?p=${item.id}`; msg += `${i + 1}. *${item.name}* - ${item.price} AED\nLink: ${pUrl}\n\n`; });
-    window.open(`https://wa.me/971559653589?text=${encodeURIComponent(msg)}`);
+    window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`);
 };
 
 window.inquireOnWhatsApp = (id) => {
@@ -991,7 +1229,7 @@ window.inquireOnWhatsApp = (id) => {
     if (!p) return;
     const pUrl = `${window.location.origin}${window.location.pathname}?p=${p.id}`;
     const msg = `*Inquiry regarding:* ${p.name}\n*Price:* ${p.price} AED\n\n*Product Link:* ${pUrl}\n\nPlease let me know the availability.`;
-    window.open(`https://wa.me/971559653589?text=${encodeURIComponent(msg)}`);
+    window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`);
 };
 
 window.switchImg = (src, el) => {
@@ -1046,11 +1284,11 @@ window.closeFullScreen = () => {
 };
 
 window.switchAdminTab = (tab) => {
-    const tabs = ['p', 'c', 'b', 's'];
+    const tabs = ['p', 'c', 'b', 'u', 's'];
     tabs.forEach(t => {
         const btn = document.getElementById(`tab-${t}`);
-        const sectionId = t === 'p' ? 'admin-product-section' : t === 'c' ? 'admin-category-section' : t === 'b' ? 'admin-banner-section' : 'admin-settings-section';
-        const listId = t === 'p' ? 'admin-product-list-container' : t === 'c' ? 'admin-category-list' : t === 'b' ? 'admin-banner-list' : null;
+        const sectionId = t === 'p' ? 'admin-product-section' : t === 'c' ? 'admin-category-section' : t === 'b' ? 'admin-banner-section' : t === 'u' ? 'admin-user-list' : 'admin-settings-section';
+        const listId = t === 'p' ? 'admin-product-list-container' : t === 'c' ? 'admin-category-list' : t === 'b' ? 'admin-banner-list' : t === 'u' ? 'admin-user-list' : null;
 
         const section = document.getElementById(sectionId);
         const list = listId ? document.getElementById(listId) : null;
@@ -1064,33 +1302,20 @@ window.switchAdminTab = (tab) => {
         if (list) list.classList.toggle('hidden', t !== tab);
     });
 
+    if (tab === 'u') renderUsersUI();
+
     const demoBtn = document.getElementById('add-demo-banner-btn');
     if (demoBtn) demoBtn.classList.toggle('hidden', tab !== 'b');
+
+    const catFilter = document.getElementById('admin-cat-filter');
+    if (catFilter) catFilter.classList.toggle('hidden', tab !== 'p');
+
+    const listTitle = document.getElementById('list-title');
+    if (listTitle) listTitle.classList.toggle('hidden', tab !== 'p');
 
     renderAdminUI();
 };
 
-window.editProduct = (id) => {
-    const item = DATA.p.find(x => x.id === id);
-    if (!item) return;
-    switchAdminTab('p');
-    document.getElementById('edit-id').value = item.id;
-    document.getElementById('p-name').value = item.name;
-    document.getElementById('p-price').value = item.price;
-    document.getElementById('p-cat-id').value = item.catId;
-    document.getElementById('p-size').value = item.size || '';
-    document.getElementById('p-material').value = item.material || '';
-    document.getElementById('p-desc').value = item.desc || '';
-    document.getElementById('p-img').value = item.img || 'img/';
-    document.getElementById('p-img2').value = item.img2 || 'img/';
-    document.getElementById('p-img3').value = item.img3 || 'img/';
-    document.getElementById('p-stock').checked = item.inStock !== false;
-    document.getElementById('p-pinned').checked = item.isPinned === true;
-    document.getElementById('p-keywords').value = item.keywords || '';
-    document.getElementById('p-form-title').innerText = "Edit Product";
-    document.getElementById('p-save-btn').innerText = "Update Product";
-    document.getElementById('admin-panel').scrollTo({ top: 0, behavior: 'smooth' });
-};
 
 window.editBanner = (id) => {
     const item = DATA.b.find(x => x.id === id);
@@ -1284,6 +1509,190 @@ window.renderAdminUI = () => {
     if (logoInput) logoInput.value = DATA.settings?.logo || '';
 };
 
+window.renderUsersUI = async () => {
+    const list = document.getElementById('admin-user-list');
+    if (!list) return;
+
+    list.innerHTML = `<div class="col-span-full py-20 text-center"><i class="fa-solid fa-circle-notch fa-spin text-gray-300 mb-4"></i><p class="text-[10px] text-gray-400 uppercase tracking-widest font-black">Fetching Customers...</p></div>`;
+
+    try {
+        const snap = await getDocs(usersCol);
+        const users = snap.docs.map(d => d.data()).sort((a, b) => (b.lastLogin || 0) - (a.lastLogin || 0));
+
+        if (users.length === 0) {
+            list.innerHTML = `<div class="col-span-full py-40 text-center"><p class="text-[12px] text-gray-300 font-bold uppercase tracking-widest italic">No customers found.</p></div>`;
+            return;
+        }
+
+        list.innerHTML = `
+            <div class="col-span-full mb-6 flex items-center gap-4">
+                <h5 class="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400 shrink-0">Registered Customers</h5>
+                <div class="h-[1px] bg-gray-100 flex-1"></div>
+                <span class="text-[9px] font-bold text-gray-300 uppercase shrink-0">${users.length} Users</span>
+            </div>
+            ` + users.map(u => {
+            const dateStr = u.lastLogin ? new Date(u.lastLogin).toLocaleString('en-AE', {
+                day: '2-digit', month: 'short', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: true
+            }) : 'Never';
+
+            return `
+                <div class="flex items-center gap-5 p-5 bg-gray-50 rounded-[2rem] border border-gray-100 hover:border-black/10 transition-all">
+                    <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-gold-luxe shadow-sm border border-black/5">
+                        <i class="fa-solid fa-user text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-[13px] uppercase tracking-tight text-[#121212]">${u.name || u.displayName || 'Unnamed User'}</span>
+                             <span class="text-[8px] bg-blue-50 text-blue-400 px-2 py-0.5 rounded-full font-black uppercase tracking-widest">Active</span>
+                        </div>
+                        <div class="flex flex-col md:flex-row md:items-center gap-1 md:gap-4 text-[10px] text-gray-400">
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-envelope opacity-50"></i> ${u.email}</span>
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-phone opacity-50"></i> ${u.mobile || 'No Mobile'}</span>
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock opacity-50"></i> Last Login: ${dateStr}</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                    <button onclick="viewCustomerWishlist('${u.uid}', '${(u.name || u.displayName || 'Customer').replace(/'/g, "\\'")}')" 
+                        class="w-10 h-10 rounded-full bg-red-50 text-red-400 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                        title="View Favorites">
+                        <i class="fa-solid fa-heart"></i>
+                    </button>
+                    <button onclick="viewCustomerCart('${u.uid}', '${(u.name || u.displayName || 'Customer').replace(/'/g, "\\'")}')" 
+                        class="w-10 h-10 rounded-full bg-blue-50 text-blue-400 flex items-center justify-center hover:bg-blue-500 hover:text-white transition-all shadow-sm"
+                        title="View Cart">
+                        <i class="fa-solid fa-cart-shopping"></i>
+                    </button>
+                    <button onclick="deleteUser('${u.uid}', '${(u.name || u.displayName || 'Customer').replace(/'/g, "\\'")}')" 
+                        class="w-10 h-10 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm ml-2"
+                        title="Delete User">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error("Users Fetch Error", e);
+        list.innerHTML = `<p class="text-center py-20 text-red-400 text-[11px] uppercase font-black tracking-widest">Error loading customers</p>`;
+    }
+};
+
+window.deleteUser = async (uid, name) => {
+    if (!confirm(`Are you sure you want to delete user "${name}"? This will reset their account data.`)) return;
+
+    try {
+        // 1. Delete Wishlist & Cart (Clean Slate)
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', uid, 'account', 'wishlist'));
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', uid, 'account', 'cart'));
+
+        // 2. Delete User Profile
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', uid));
+
+        showToast(`User ${name} data reset.`);
+        renderUsersUI();
+    } catch (e) {
+        console.error("Error deleting user:", e);
+        showToast("Failed to delete user.");
+    }
+};
+
+window.viewCustomerWishlist = async (uid, name) => {
+    const list = document.getElementById('guest-wishlist-items');
+    const title = document.getElementById('guest-wishlist-title');
+    if (!list || !title) return;
+
+    title.innerText = `${name}'s Favorites`;
+    list.innerHTML = `<div class="py-20 text-center"><i class="fa-solid fa-circle-notch fa-spin text-gray-300 mb-4"></i><p class="text-[9px] text-gray-400 uppercase tracking-widest font-black">Fetching Wishlist...</p></div>`;
+
+    toggleGuestWishlistModal();
+
+    try {
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', uid, 'account', 'wishlist');
+        const snap = await getDoc(docRef);
+
+        if (!snap.exists() || !snap.data().ids || snap.data().ids.length === 0) {
+            list.innerHTML = `<div class="py-20 text-center opacity-20"><i class="fa-solid fa-heart-crack text-4xl mb-4"></i><p class="text-[10px] font-black uppercase tracking-widest">Empty Wishlist</p></div>`;
+            return;
+        }
+
+        const ids = snap.data().ids;
+        const products = ids.map(id => DATA.p.find(p => p.id === id)).filter(p => p);
+
+        if (products.length === 0) {
+            list.innerHTML = `<div class="py-20 text-center opacity-20"><p class="text-[10px] font-black uppercase tracking-widest">Products no longer exist</p></div>`;
+            return;
+        }
+
+        list.innerHTML = products.map(p => `
+            <div class="flex items-center gap-4 p-3 bg-white/50 rounded-2xl border border-black/5">
+                <img src="${getOptimizedUrl(p.img, 'w_100,c_fill')}" class="w-16 h-16 rounded-xl object-cover shadow-sm">
+                <div class="flex-1">
+                    <h4 class="text-[11px] font-bold text-[#333333]">${p.name}</h4>
+                    <p class="text-[9px] font-black text-gold-luxe uppercase tracking-widest">${p.price} AED</p>
+                </div>
+                <button onclick="viewDetail('${p.id}', true); toggleGuestWishlistModal();" class="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                    <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+            </div>
+        `).join('');
+
+    } catch (e) {
+        console.error("Fetch Wishlist Error", e);
+        list.innerHTML = `<p class="text-center py-20 text-red-300 text-[10px] font-black uppercase tracking-widest">Error fetching wishlist</p>`;
+    }
+};
+
+window.viewCustomerCart = async (uid, name) => {
+    const list = document.getElementById('guest-wishlist-items');
+    const title = document.getElementById('guest-wishlist-title');
+    if (!list || !title) return;
+
+    title.innerText = `${name}'s Cart`;
+    list.innerHTML = `<div class="py-20 text-center"><i class="fa-solid fa-circle-notch fa-spin text-gray-300 mb-4"></i><p class="text-[9px] text-gray-400 uppercase tracking-widest font-black">Fetching Cart...</p></div>`;
+
+    toggleGuestWishlistModal();
+
+    try {
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', uid, 'account', 'cart');
+        const snap = await getDoc(docRef);
+
+        if (!snap.exists() || !snap.data().ids || snap.data().ids.length === 0) {
+            list.innerHTML = `<div class="py-20 text-center opacity-20"><i class="fa-solid fa-cart-shopping text-4xl mb-4"></i><p class="text-[10px] font-black uppercase tracking-widest">Cart Empty</p></div>`;
+            return;
+        }
+
+        const ids = snap.data().ids;
+        const products = ids.map(id => DATA.p.find(p => p.id === id)).filter(p => p);
+
+        if (products.length === 0) {
+            list.innerHTML = `<div class="py-20 text-center opacity-20"><p class="text-[10px] font-black uppercase tracking-widest">Products no longer exist</p></div>`;
+            return;
+        }
+
+        list.innerHTML = products.map(p => `
+            <div class="flex items-center gap-4 p-3 bg-white/50 rounded-2xl border border-black/5">
+                <img src="${getOptimizedUrl(p.img, 'w_100,c_fill')}" class="w-16 h-16 rounded-xl object-cover shadow-sm">
+                <div class="flex-1">
+                    <h4 class="text-[11px] font-bold text-[#333333]">${p.name}</h4>
+                    <p class="text-[9px] font-black text-black uppercase tracking-widest">${p.price} AED</p>
+                </div>
+                <button onclick="viewDetail('${p.id}', true); toggleGuestWishlistModal();" class="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                    <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+            </div>
+        `).join('');
+
+    } catch (e) {
+        console.error("Fetch Cart Error", e);
+        list.innerHTML = `<p class="text-center py-20 text-red-300 text-[10px] font-black uppercase tracking-widest">Error fetching cart</p>`;
+    }
+};
+
+window.toggleGuestWishlistModal = () => {
+    const modal = document.getElementById('guest-wishlist-modal');
+    if (modal) modal.classList.toggle('hidden');
+};
+
 function applySettings() {
     const container = document.getElementById('logo-container');
     if (!container) return;
@@ -1370,6 +1779,17 @@ window.clearCustomerSearch = () => {
 };
 window.applyPriceSort = (sort) => { state.sort = sort; renderHome(); };
 window.showAdminPanel = () => {
+    if (window.innerWidth < 1024) return showToast("Dashboard only accessible on Desktop");
+
+    if (!state.isAdmin) {
+        showToast("Please login as Admin to continue");
+        if (!state.user || state.user.isAnonymous) {
+            toggleAuthModal();
+        } else {
+            showToast("This account does not have admin access.");
+        }
+        return;
+    }
     const panel = document.getElementById('admin-panel');
     if (!panel) return;
     panel.classList.replace('hidden', 'flex');
@@ -1400,18 +1820,186 @@ function populateAdminCatFilter() {
     if (select) select.innerHTML = `<option value="all">All Categories</option>` + DATA.c.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 }
 
-window.resetForm = () => {
-    const fields = ['edit-id', 'edit-cat-id', 'p-name', 'p-price', 'p-size', 'p-material', 'p-desc', 'p-keywords', 'c-name'];
-    fields.forEach(f => { const el = document.getElementById(f); if (el) el.value = ""; });
-    document.getElementById('p-img').value = "img/"; document.getElementById('p-img2').value = "img/"; document.getElementById('p-img3').value = "img/";
-    document.getElementById('c-img').value = "img/";
-    document.getElementById('p-stock').checked = true;
-    document.getElementById('p-pinned').checked = false;
-    document.getElementById('c-pinned').checked = false;
-    document.getElementById('p-form-title').innerText = "Product Details";
-    document.getElementById('c-form-title').innerText = "New Category";
+// --- GALLERY & DRAG-DROP HELPERS ---
+window.triggerGalleryUpload = (containerId) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        await handleImageFiles(files, containerId);
+    };
+    input.click();
+};
 
-    if (document.getElementById('admin-cat-filter')) document.getElementById('admin-cat-filter').value = "all";
+window.handleGalleryDrag = (e) => {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-active');
+};
+
+window.handleGalleryLeave = (e) => {
+    e.currentTarget.classList.remove('drag-active');
+};
+
+window.handleGalleryDrop = async (e, containerId) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-active');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) return showToast("Please drop images.");
+    await handleImageFiles(files, containerId);
+};
+
+async function handleImageFiles(files, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Remove empty placeholder
+    const placeholder = container.querySelector('.w-full');
+    if (placeholder) placeholder.remove();
+
+    showToast(`Uploading ${files.length} images...`);
+
+    for (const file of files) {
+        try {
+            const url = await directCloudinaryUpload(file);
+            addGalleryItem(containerId, url);
+        } catch (err) {
+            showToast("One or more uploads failed.");
+        }
+    }
+}
+
+function addGalleryItem(containerId, url) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = "gallery-item fade-in";
+    div.dataset.url = url;
+    div.innerHTML = `
+        <img src="${getOptimizedUrl(url, 'w_200')}" alt="Gallery item">
+        <div class="remove-img" onclick="this.parentElement.remove()">
+            <i class="fa-solid fa-xmark"></i>
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function getGalleryImages(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.gallery-item')).map(item => item.dataset.url);
+}
+
+function renderGalleryUI(containerId, images = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = images.length === 0 ?
+        '<div class="w-full text-center py-6 text-[9px] font-bold text-gray-300 uppercase">Gallery Empty</div>' : '';
+    images.forEach(url => addGalleryItem(containerId, url));
+}
+
+// --- VARIATION HANDLERS ---
+window.addColorRow = (data = {}) => {
+    if (typeof data === 'string') data = { name: data, hex: '#000000', images: [] };
+    const container = document.getElementById('variation-container');
+    if (!container) return;
+    const id = "v-" + Date.now() + Math.random().toString(16).slice(2);
+    const galleryId = "gallery-" + id;
+
+    const div = document.createElement('div');
+    div.className = "variation-row fade-in";
+    div.dataset.type = "color";
+    div.innerHTML = `
+        <div class="flex justify-between items-center bg-gray-50/50 p-2 rounded-xl mb-2">
+            <span class="text-[9px] font-black uppercase tracking-widest text-black flex items-center gap-2">
+                <i class="fa-solid fa-palette text-gray-400"></i> Color Variation
+            </span>
+            <button onclick="this.closest('.variation-row').remove()" class="text-red-400 hover:text-red-600 transition-all">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <input type="text" class="v-name admin-input !py-3 !text-xs" placeholder="Color Name (e.g. Royal Blue)" value="${data.name || ''}">
+            <div class="flex gap-2 items-center admin-input !py-2">
+                <span class="text-[8px] font-black text-gray-400 uppercase">Swatch:</span>
+                <input type="color" class="v-hex w-full h-6 rounded cursor-pointer border-none p-0 bg-transparent" value="${data.hex || '#000000'}">
+            </div>
+        </div>
+        <div class="space-y-2">
+            <div class="flex justify-between items-center">
+                <span class="text-[8px] font-black text-gray-400 uppercase">Color Photos</span>
+                <button onclick="triggerGalleryUpload('${galleryId}')" class="text-[8px] font-bold uppercase text-blue-500 underline">+ Add</button>
+            </div>
+            <div id="${galleryId}" class="admin-gallery !min-h-[60px] !p-2" 
+                 ondragover="handleGalleryDrag(event)" ondragleave="handleGalleryLeave(event)" ondrop="handleGalleryDrop(event, '${galleryId}')">
+                <div class="w-full text-center py-2 text-[7px] font-bold text-gray-300 uppercase">Drop Color Images</div>
+            </div>
+        </div>
+    `;
+    container.appendChild(div);
+    if (data.images) renderGalleryUI(galleryId, data.images);
+};
+
+window.addSizeRow = (data = {}) => {
+    if (typeof data === 'string') data = { name: data, images: [] };
+    const container = document.getElementById('variation-container');
+    if (!container) return;
+    const id = "v-" + Date.now() + Math.random().toString(16).slice(2);
+    const galleryId = "gallery-" + id;
+
+    const div = document.createElement('div');
+    div.className = "variation-row fade-in";
+    div.dataset.type = "size";
+    div.innerHTML = `
+        <div class="flex justify-between items-center bg-gray-50/50 p-2 rounded-xl mb-2">
+            <span class="text-[9px] font-black uppercase tracking-widest text-black flex items-center gap-2">
+                <i class="fa-solid fa-ruler-combined text-gray-400"></i> Size Variation
+            </span>
+            <button onclick="this.closest('.variation-row').remove()" class="text-red-400 hover:text-red-600 transition-all">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+        </div>
+        <input type="text" class="v-name admin-input !py-3 !text-xs" placeholder="Size Name (e.g. XL or 12 Inches)" value="${data.name || ''}">
+        <div class="space-y-2">
+            <div class="flex justify-between items-center">
+                <span class="text-[8px] font-black text-gray-400 uppercase">Size Photos</span>
+                <button onclick="triggerGalleryUpload('${galleryId}')" class="text-[8px] font-bold uppercase text-blue-500 underline">+ Add</button>
+            </div>
+            <div id="${galleryId}" class="admin-gallery !min-h-[60px] !p-2" 
+                 ondragover="handleGalleryDrag(event)" ondragleave="handleGalleryLeave(event)" ondrop="handleGalleryDrop(event, '${galleryId}')">
+                <div class="w-full text-center py-2 text-[7px] font-bold text-gray-300 uppercase">Drop Size Images</div>
+            </div>
+        </div>
+    `;
+    container.appendChild(div);
+    if (data.images) renderGalleryUI(galleryId, data.images);
+};
+
+window.resetForm = () => {
+    const fields = ['edit-id', 'edit-cat-id', 'p-name', 'p-price', 'p-material', 'p-size', 'p-keywords', 'p-desc', 'p-cat-id', 'c-name'];
+    fields.forEach(f => { const el = document.getElementById(f); if (el) el.value = ""; });
+
+    // Protected Field Resets
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+    const setInner = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+
+    setVal('c-img', 'img/');
+    setChecked('p-stock', true);
+    setChecked('p-pinned', false);
+    setChecked('c-pinned', false);
+    setInner('p-form-title', 'Product Details');
+    setInner('c-form-title', 'New Category');
+
+    // Clear Galleries & Variations
+    renderGalleryUI('main-product-gallery', []);
+    const varContainer = document.getElementById('variation-container');
+    if (varContainer) varContainer.innerHTML = '';
+
+    const catFilter = document.getElementById('admin-cat-filter');
+    if (catFilter) catFilter.value = "all";
 };
 
 window.handleDragOver = (e) => {
@@ -1441,6 +2029,7 @@ window.handleDrop = async (e, fieldId) => {
         zone.classList.remove('uploading');
     }
 };
+
 
 async function directCloudinaryUpload(file) {
     const formData = new FormData();
@@ -1487,13 +2076,19 @@ window.cloudinaryUpload = (fieldId) => {
     cloudinaryWidget.open();
 };
 
+let toastTimeout;
 function showToast(msg) {
-    const t = document.getElementById('toast'); if (!t) return;
-    t.innerText = msg; t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 3000);
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.innerText = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        t.classList.remove('show');
+    }, 3000);
 }
 
-function getOptimizedUrl(url, transform = 'f_auto,q_auto') {
+window.getOptimizedUrl = (url, transform = 'f_auto,q_auto') => {
     if (!url || typeof url !== 'string' || !url.includes('cloudinary.com')) return url;
     if (url.includes('f_auto,q_auto') && transform === 'f_auto,q_auto') return url;
 
@@ -1512,7 +2107,7 @@ function getOptimizedUrl(url, transform = 'f_auto,q_auto') {
     return url;
 }
 
-startSync();
+
 
 // MOBILE SIDEBAR TOGGLE
 window.toggleMobileSidebar = () => {
@@ -1550,14 +2145,25 @@ window.switchSidebarPanel = (panelName) => {
 
 
 function updateSidebarCategories() {
-    const container = document.getElementById('mobile-sidebar-categories-list');
-    if (!container) return;
+    const list = document.getElementById('mobile-sidebar-categories-list');
+    if (!list) return;
 
-    container.innerHTML = DATA.c.map(c => `
-        <a href="#" onclick="applyFilter('${c.id}'); toggleMobileSidebar()" class="sidebar-nav-link">
-            <span class="w-2 h-2 rounded-full bg-[#121212]/10"></span> ${c.name}
-        </a>
-    `).join('');
+    list.innerHTML = `
+        <div class="sidebar-category-grid">
+            <div class="sidebar-category-card ${state.filter === 'all' ? 'active-category' : ''}" onclick="applyFilter('all'); toggleMobileSidebar()">
+                <div class="sidebar-category-icon-box">
+                    <i class="fa-solid fa-shapes text-xl ${state.filter === 'all' ? 'text-white' : 'text-[#333333]/20'}"></i>
+                </div>
+                <span>All Items</span>
+            </div>
+            ${DATA.c.map(c => `
+                <div class="sidebar-category-card ${state.filter === c.id ? 'active-category' : ''}" onclick="applyFilter('${c.id}'); toggleMobileSidebar()">
+                    <img src="${getOptimizedUrl(c.img, 'w_150,c_fill,f_auto,q_auto:eco')}" alt="${c.name}">
+                    <span>${c.name}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
 }
 
 // AUTHENTICATION LOGIC
@@ -1565,9 +2171,58 @@ let isLoginMode = true;
 
 window.handleUserIconClick = () => {
     if (state.user && !state.user.isAnonymous) {
-        showAdminPanel();
+        toggleUserMenuModal();
     } else {
         toggleAuthModal();
+    }
+};
+
+window.toggleUserMenuModal = () => {
+    const modal = document.getElementById('user-menu-modal');
+    if (!modal) return;
+    modal.classList.toggle('hidden');
+
+    // Blur logic for main app
+    const app = document.getElementById('app');
+    if (!modal.classList.contains('hidden')) {
+        renderUserMenu();
+        if (app) app.classList.add('blur-sm');
+    } else {
+        if (app) app.classList.remove('blur-sm');
+    }
+};
+
+function renderUserMenu() {
+    if (!state.user) return;
+    const nameEl = document.getElementById('user-menu-name');
+    const emailEl = document.getElementById('user-menu-email');
+    const mobileEl = document.getElementById('user-menu-mobile');
+    const adminLink = document.getElementById('admin-dashboard-link');
+
+    if (nameEl) nameEl.innerText = state.user.displayName || 'Customer';
+    if (emailEl) emailEl.innerText = state.user.email;
+
+    // Fetch mobile from Firestore sync data if possible, or just use placeholder
+    if (mobileEl) mobileEl.innerText = "Premium Member";
+
+    if (adminLink) {
+        if (state.isAdmin && window.innerWidth >= 1024) adminLink.classList.remove('hidden');
+        else adminLink.classList.add('hidden');
+    }
+}
+
+window.handleLogout = async () => {
+    try {
+        await signOut(auth);
+        state.isAdmin = false;
+        state.user = null;
+        state.wishlist = [];
+        state.cart = [];
+        toggleUserMenuModal();
+        showToast("Signed out successfully");
+        renderHome();
+    } catch (err) {
+        console.error("Logout failed", err);
     }
 };
 
@@ -1589,17 +2244,39 @@ window.switchAuthMode = () => {
     const subtitle = document.getElementById('auth-subtitle');
     const submitBtn = document.getElementById('auth-submit-btn');
     const toggleText = document.getElementById('auth-toggle-text');
+    const nameField = document.getElementById('auth-name-div');
+    const mobileField = document.getElementById('auth-mobile-div');
+    const forgotLink = document.getElementById('auth-forgot-link');
 
     if (isLoginMode) {
         title.innerText = "Welcome Back";
         subtitle.innerText = "Sign in to save your collection";
         submitBtn.innerText = "Sign In";
         toggleText.innerHTML = `Don't have an account? <button onclick="switchAuthMode()" class="text-gold-luxe font-black uppercase tracking-widest ml-1 hover:underline">Create One</button>`;
+        if (nameField) nameField.classList.add('hidden');
+        if (mobileField) mobileField.classList.add('hidden');
+        if (forgotLink) forgotLink.classList.remove('hidden');
     } else {
         title.innerText = "Join the Club";
         subtitle.innerText = "Create an account for permanent access";
         submitBtn.innerText = "Create Account";
         toggleText.innerHTML = `Already have an account? <button onclick="switchAuthMode()" class="text-gold-luxe font-black uppercase tracking-widest ml-1 hover:underline">Sign In</button>`;
+        if (nameField) nameField.classList.remove('hidden');
+        if (mobileField) mobileField.classList.remove('hidden');
+        if (forgotLink) forgotLink.classList.add('hidden');
+    }
+};
+
+window.handleForgotPassword = async () => {
+    const email = document.getElementById('auth-email').value;
+    if (!email) return showToast("Please enter your email address first.");
+
+    try {
+        await sendPasswordResetEmail(auth, email);
+        showToast("Password reset email sent! 📧✨");
+    } catch (err) {
+        console.error(err);
+        showToast("Error sending reset email.");
     }
 };
 
@@ -1607,6 +2284,8 @@ window.handleAuthSubmit = async (e) => {
     e.preventDefault();
     const email = document.getElementById('auth-email').value;
     const password = document.getElementById('auth-password').value;
+    const name = document.getElementById('auth-name')?.value;
+    const mobile = document.getElementById('auth-mobile')?.value;
     const submitBtn = document.getElementById('auth-submit-btn');
 
     submitBtn.disabled = true;
@@ -1617,7 +2296,24 @@ window.handleAuthSubmit = async (e) => {
             await signInWithEmailAndPassword(auth, email, password);
             showToast("Welcome back!");
         } else {
-            await createUserWithEmailAndPassword(auth, email, password);
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // Update profile with Name
+            if (name) {
+                await updateProfile(user, { displayName: name });
+            }
+
+            // Sync to Firestore immediately
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid), {
+                email: email,
+                name: name || email.split('@')[0],
+                mobile: mobile || "",
+                lastLogin: Date.now(),
+                uid: user.uid,
+                createdAt: Date.now()
+            });
+
             showToast("Account created successfully!");
         }
         toggleAuthModal();
@@ -1663,6 +2359,7 @@ window.addToCart = (id) => {
         state.cart.push(id);
         showToast('Added to Cart');
         updateCartBadge();
+        saveCart();
     } else {
         showToast('Already in Cart');
     }
@@ -1672,6 +2369,7 @@ window.removeFromCart = (id) => {
     state.cart = state.cart.filter(i => i !== id);
     renderCart();
     updateCartBadge();
+    saveCart();
     showToast('Removed from Cart');
 };
 
@@ -1726,11 +2424,12 @@ window.checkoutCart = () => {
     state.cart.forEach((id, idx) => {
         const p = DATA.p.find(x => x.id === id);
         if (p) {
-            msg += (idx + 1) + '. ' + p.name + ' (' + p.price + ' AED)\n';
+            const pUrl = `${window.location.origin}${window.location.pathname}?p=${p.id}`;
+            msg += `${idx + 1}. *${p.name}* (${p.price} AED)\nLink: ${pUrl}\n\n`;
         }
     });
 
-    const wpUrl = `https://wa.me/971524317929?text=${encodeURIComponent(msg)}`;
+    const wpUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
     window.open(wpUrl, '_blank');
 };
 

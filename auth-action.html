@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Laszon Gifts | Account Security</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,800;1,700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #ffffff;
+            color: #333333;
+        }
+
+        .font-serif {
+            font-family: 'Playfair Display', serif;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .admin-input {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            background-color: #f9fafb;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .admin-input:focus {
+            background-color: white;
+            border-color: rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+
+    <div class="w-full max-w-md bg-white p-10 rounded-[2.5rem] shadow-2xl fade-in text-center">
+        <!-- HEADER -->
+        <div class="mb-10">
+            <h1 class="text-2xl font-black tracking-tighter text-[#333333] mb-2">LASZON</h1>
+            <p class="text-[9px] font-bold uppercase tracking-[0.3em] text-gold-luxe text-gray-400">Security Center</p>
+        </div>
+
+        <!-- LOADING STATE -->
+        <div id="loading-state" class="py-10">
+            <i class="fa-solid fa-circle-notch fa-spin text-2xl text-gray-200"></i>
+            <p class="mt-4 text-[10px] font-bold uppercase tracking-widest text-gray-400">Verifying Request...</p>
+        </div>
+
+        <!-- PASSWORD RESET FORM -->
+        <div id="reset-form" class="hidden space-y-6 text-left">
+            <div class="text-center mb-6">
+                <i
+                    class="fa-solid fa-key text-3xl text-gray-800 mb-4 bg-gray-50 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto"></i>
+                <h2 class="text-xl font-serif italic text-black">Reset Password</h2>
+                <p id="reset-email-display" class="text-[10px] font-bold text-gray-400 mt-2 tracking-widest"></p>
+            </div>
+
+            <form onsubmit="handleResetPassword(event)" class="space-y-4">
+                <div class="space-y-1">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">New
+                        Password</label>
+                    <input type="password" id="new-password" required minlength="6" class="admin-input"
+                        placeholder="Create new password">
+                </div>
+                <button type="submit" id="reset-btn"
+                    class="w-full py-5 bg-[#333333] text-white rounded-2xl font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-black/20 active:scale-95 transition-all">
+                    Save New Password
+                </button>
+            </form>
+        </div>
+
+        <!-- SUCCESS STATE -->
+        <div id="success-state" class="hidden py-10">
+            <div
+                class="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center text-green-500 mx-auto mb-6">
+                <i class="fa-solid fa-check text-3xl"></i>
+            </div>
+            <h2 class="text-xl font-serif italic text-black mb-2">Password Updated</h2>
+            <p class="text-[10px] font-bold text-gray-400 tracking-widest mb-8">You can now login with your new
+                password.</p>
+
+            <a href="index.html"
+                class="inline-block w-full py-5 bg-black text-white rounded-2xl font-bold text-[11px] uppercase tracking-widest hover:opacity-90 transition-all">
+                Return to Store
+            </a>
+        </div>
+
+        <!-- ERROR STATE -->
+        <div id="error-state" class="hidden py-10">
+            <div class="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6">
+                <i class="fa-solid fa-triangle-exclamation text-3xl"></i>
+            </div>
+            <h2 class="text-xl font-serif italic text-black mb-2">Link Expired</h2>
+            <p id="error-msg" class="text-[10px] font-bold text-gray-400 tracking-widest mb-8">This request is invalid
+                or has expired.</p>
+
+            <a href="index.html"
+                class="inline-block w-full py-5 bg-gray-100 text-black rounded-2xl font-bold text-[11px] uppercase tracking-widest hover:bg-gray-200 transition-all">
+                Back to Home
+            </a>
+        </div>
+
+    </div>
+
+    <!-- FIREBASE MODULES -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, verifyPasswordResetCode, confirmPasswordReset } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD9YVfGZdSNesw26IsmfFaTBExlYoGt0gc",
+            authDomain: "laszon-uae-catalogue.firebaseapp.com",
+            projectId: "laszon-uae-catalogue",
+            storageBucket: "laszon-uae-catalogue.firebasestorage.app",
+            messagingSenderId: "1070868763766",
+            appId: "1:1070868763766:web:e5d9525b0baccb2eb3fb57"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // --- CORE LOGIC ---
+        let oobCode = null;
+
+        document.addEventListener('DOMContentLoaded', handleLoad);
+
+        function handleLoad() {
+            // Parse URL Parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const mode = urlParams.get('mode');
+            oobCode = urlParams.get('oobCode');
+
+            if (!mode || !oobCode) {
+                showError("Invalid link parameters.");
+                return;
+            }
+
+            switch (mode) {
+                case 'resetPassword':
+                    handleResetPasswordMode(oobCode);
+                    break;
+                // You can handle distinct modes like 'verifyEmail' here later
+                default:
+                    showError("Unsupported action mode.");
+            }
+        }
+
+        async function handleResetPasswordMode(code) {
+            try {
+                // Verify the code to ensure it's valid and get the user's email
+                const email = await verifyPasswordResetCode(auth, code);
+
+                // Show the form
+                document.getElementById('loading-state').classList.add('hidden');
+                document.getElementById('reset-form').classList.remove('hidden');
+                document.getElementById('reset-email-display').innerText = email;
+            } catch (error) {
+                console.error(error);
+                showError("This password reset link is invalid or has expired. Please request a new one.");
+            }
+        }
+
+        window.handleResetPassword = async (e) => {
+            e.preventDefault();
+            const newPassword = document.getElementById('new-password').value;
+            const btn = document.getElementById('reset-btn');
+
+            if (!newPassword || newPassword.length < 6) {
+                alert("Password must be at least 6 characters.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            try {
+                await confirmPasswordReset(auth, oobCode, newPassword);
+
+                // Show Success
+                document.getElementById('reset-form').classList.add('hidden');
+                document.getElementById('success-state').classList.remove('hidden');
+            } catch (error) {
+                console.error(error);
+                btn.disabled = false;
+                btn.innerText = "Save New Password";
+                alert("Error resetting password: " + error.message);
+            }
+        };
+
+        function showError(msg) {
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('error-state').classList.remove('hidden');
+            document.getElementById('error-msg').innerText = msg;
+        }
+    </script>
+</body>
+
+</html>

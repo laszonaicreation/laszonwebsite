@@ -43,6 +43,11 @@
             <i class="fa-solid fa-house text-lg"></i>
             <span class="text-[7px] font-black uppercase tracking-widest">Home</span>
         </button>
+        <button onclick="toggleMobileSidebar(); switchSidebarPanel('categories')"
+            class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
+            <i class="fa-solid fa-shapes text-lg"></i>
+            <span class="text-[7px] font-black uppercase tracking-widest">Categories</span>
+        </button>
         <button onclick="document.getElementById('customer-search').focus()"
             class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
             <i class="fa-solid fa-magnifying-glass text-lg"></i>
@@ -53,11 +58,6 @@
             <i class="fa-solid fa-heart text-lg"></i>
             <span class="text-[7px] font-black uppercase tracking-widest">Saved</span>
         </button>
-        <button onclick="document.getElementById('category-row')?.scrollIntoView({behavior:'smooth'})"
-            class="flex flex-col items-center gap-1 text-[#333333]/80 hover:text-[#333333] transition-all">
-            <i class="fa-solid fa-shapes text-lg"></i>
-            <span class="text-[7px] font-black uppercase tracking-widest">Catalog</span>
-        </button>
     </div>
 
     <!-- MOBILE SIDEBAR (DRAWER) -->
@@ -65,7 +65,7 @@
         class="fixed inset-0 z-[120] bg-black/40 backdrop-blur-md hidden opacity-0 transition-opacity duration-300"
         onclick="toggleMobileSidebar()">
         <div id="mobile-sidebar-container"
-            class="absolute top-0 left-[-300px] w-[300px] h-full bg-white shadow-2xl transition-all duration-400 ease-out overflow-hidden"
+            class="absolute top-0 left-[-320px] w-[320px] h-full bg-white shadow-2xl transition-all duration-400 ease-out overflow-hidden"
             onclick="event.stopPropagation()">
 
             <!-- PANEL 1: MAIN MENU -->
@@ -108,7 +108,7 @@
 
             <!-- PANEL 2: CATEGORIES -->
             <div id="sidebar-panel-categories"
-                class="absolute inset-0 p-8 flex flex-col translate-x-full transition-transform duration-300">
+                class="absolute inset-0 px-5 pt-8 pb-32 flex flex-col translate-x-full transition-transform duration-300">
                 <div class="flex items-center gap-4 mb-10">
                     <button onclick="switchSidebarPanel('main')"
                         class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-[#333333]">
@@ -116,7 +116,7 @@
                     </button>
                     <h2 class="text-xs font-black uppercase tracking-widest">Categories</h2>
                 </div>
-                <div id="mobile-sidebar-categories-list" class="flex flex-col overflow-y-auto no-scrollbar pb-10">
+                <div id="mobile-sidebar-categories-list" class="flex-1 overflow-y-auto no-scrollbar pb-10">
                     <!-- Categories will be injected here -->
                 </div>
             </div>
@@ -298,6 +298,8 @@
                         class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Categories</button>
                     <button onclick="switchAdminTab('b')" id="tab-b"
                         class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Banners</button>
+                    <button onclick="switchAdminTab('u')" id="tab-u"
+                        class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Customers</button>
                     <button onclick="switchAdminTab('s')" id="tab-s"
                         class="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase text-gray-400">Store</button>
                 </div>
@@ -310,62 +312,82 @@
                                 <h3 id="p-form-title" class="text-[11px] font-black uppercase tracking-widest">Product
                                     Details</h3>
                                 <input type="hidden" id="edit-id">
-                                <input type="text" id="p-name" class="admin-input" placeholder="Item Name">
-                                <input type="text" id="p-price" class="admin-input" placeholder="Price (AED 50)">
-                                <select id="p-cat-id" class="admin-input cursor-pointer">
-                                    <option value="">Select Category</option>
-                                </select>
-
-                                <div class="grid grid-cols-2 gap-3">
-                                    <input type="text" id="p-size" class="admin-input" placeholder="Size">
-                                    <input type="text" id="p-material" class="admin-input" placeholder="Material">
+                                <div class="space-y-4">
+                                    <input type="text" id="p-name" class="admin-input" placeholder="Item Name">
+                                    <input type="text" id="p-price" class="admin-input" placeholder="Price (AED 50)">
+                                    <select id="p-cat-id" class="admin-input cursor-pointer">
+                                        <option value="">Select Category</option>
+                                    </select>
+                                    <input type="text" id="p-material" class="admin-input"
+                                        placeholder="Material / Craftsmanship Info">
+                                    <input type="text" id="p-size" class="admin-input"
+                                        placeholder="Single Size / Dimensions (e.g. 12x12 cm)">
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <!-- MAIN GALLERY -->
+                                <div class="space-y-3 pt-6 border-t border-gray-100">
+                                    <div class="flex justify-between items-end">
+                                        <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400">Main
+                                            Product Gallery</h4>
+                                        <span class="text-[8px] text-gray-300 font-bold uppercase">Drag & Drop
+                                            Multiple</span>
+                                    </div>
+                                    <div id="main-product-gallery" class="admin-gallery"
+                                        ondragover="handleGalleryDrag(event)" ondragleave="handleGalleryLeave(event)"
+                                        ondrop="handleGalleryDrop(event, 'main-product-gallery')">
+                                        <div
+                                            class="w-full text-center py-6 text-[9px] font-bold text-gray-300 uppercase">
+                                            Gallery Empty</div>
+                                    </div>
+                                    <button onclick="triggerGalleryUpload('main-product-gallery')"
+                                        class="w-full py-4 bg-gray-50 border border-gray-100 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all">Add
+                                        Photos</button>
+                                </div>
+
+                                <!-- VARIATIONS -->
+                                <div class="space-y-6 pt-6 border-t border-gray-100">
+                                    <div class="flex justify-between items-center">
+                                        <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                            Variations</h4>
+                                        <div class="flex gap-2">
+                                            <button onclick="addColorRow()"
+                                                class="text-[9px] font-black uppercase bg-black text-white px-4 py-2 rounded-xl hover:opacity-80 transition-all">+
+                                                Color</button>
+                                            <button onclick="addSizeRow()"
+                                                class="text-[9px] font-black uppercase bg-black text-white px-4 py-2 rounded-xl hover:opacity-80 transition-all">+
+                                                Size</button>
+                                        </div>
+                                    </div>
+                                    <div id="variation-container" class="space-y-4">
+                                        <!-- Variations with their own galleries will appear here -->
+                                    </div>
+                                </div>
+
+                                <!-- ADDITIONAL OPTIONS -->
+                                <div class="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-gray-100">
                                     <label
                                         class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
                                         <input type="checkbox" id="p-stock" class="w-4 h-4 accent-black" checked>
-                                        <span
-                                            class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Available
-                                            in
-                                            Stock</span>
+                                        <div class="flex flex-col">
+                                            <span
+                                                class="text-[9px] font-black uppercase tracking-widest text-[#121212]">In
+                                                Stock</span>
+                                            <span class="text-[7px] font-bold text-gray-400">AVAILABLE FOR
+                                                PURCHASE</span>
+                                        </div>
                                     </label>
                                     <label
                                         class="flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 cursor-pointer">
                                         <input type="checkbox" id="p-pinned" class="w-4 h-4 accent-black">
-                                        <span class="text-[11px] font-bold uppercase tracking-widest text-gray-500">Pin
-                                            to
-                                            Top
-                                            (Always First)</span>
+                                        <div class="flex flex-col">
+                                            <span
+                                                class="text-[9px] font-black uppercase tracking-widest text-[#121212]">Pin
+                                                Product</span>
+                                            <span class="text-[7px] font-bold text-gray-400">SHOW AT TOP</span>
+                                        </div>
                                     </label>
                                 </div>
 
-                                <div class="bg-white/60 p-4 rounded-xl border border-gray-100 space-y-4">
-                                    <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
-                                        ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img')">
-                                        <input type="text" id="p-img"
-                                            class="flex-1 bg-transparent outline-none text-sm font-semibold"
-                                            value="img/" placeholder="Image Path 1">
-                                        <button onclick="cloudinaryUpload('p-img')"
-                                            class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
-                                    </div>
-                                    <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
-                                        ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img2')">
-                                        <input type="text" id="p-img2"
-                                            class="flex-1 bg-transparent outline-none text-sm font-semibold"
-                                            value="img/" placeholder="Image Path 2">
-                                        <button onclick="cloudinaryUpload('p-img2')"
-                                            class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
-                                    </div>
-                                    <div class="drop-zone flex gap-2 p-1 rounded-lg" ondragover="handleDragOver(event)"
-                                        ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'p-img3')">
-                                        <input type="text" id="p-img3"
-                                            class="flex-1 bg-transparent outline-none text-sm font-semibold"
-                                            value="img/" placeholder="Image Path 3">
-                                        <button onclick="cloudinaryUpload('p-img3')"
-                                            class="text-[8px] font-black uppercase px-3 py-1 bg-gray-100 rounded-lg hover:bg-black hover:text-white transition-all">Upload</button>
-                                    </div>
-                                </div>
                                 <input type="text" id="p-keywords" class="admin-input mt-4 !bg-white"
                                     placeholder="Search Keywords (Secret - Hidden from customers)">
                                 <textarea id="p-desc" class="admin-input h-32 py-4 resize-none"
@@ -518,6 +540,7 @@
                         </div>
                         <div id="admin-category-list" class="hidden space-y-4 fade-in"></div>
                         <div id="admin-banner-list" class="hidden space-y-4 fade-in"></div>
+                        <div id="admin-user-list" class="hidden space-y-2 fade-in"></div>
                     </div>
                 </div>
             </div>
@@ -635,6 +658,17 @@
             </div>
 
             <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div id="auth-name-div" class="space-y-1 hidden">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Full Name</label>
+                    <input type="text" id="auth-name" class="admin-input !bg-white/50 focus:!bg-white"
+                        placeholder="Your Name">
+                </div>
+                <div id="auth-mobile-div" class="space-y-1 hidden">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Mobile
+                        Number</label>
+                    <input type="tel" id="auth-mobile" class="admin-input !bg-white/50 focus:!bg-white"
+                        placeholder="+971 50 123 4567">
+                </div>
                 <div class="space-y-1">
                     <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Email
                         Address</label>
@@ -642,7 +676,12 @@
                         placeholder="your@email.com">
                 </div>
                 <div class="space-y-1">
-                    <label class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Password</label>
+                    <div class="flex justify-between items-center pr-4">
+                        <label
+                            class="text-[9px] font-black uppercase tracking-widest text-black/30 pl-4">Password</label>
+                        <button type="button" id="auth-forgot-link" onclick="handleForgotPassword()"
+                            class="text-[8px] font-bold text-black/40 hover:text-black uppercase tracking-widest">Forgot?</button>
+                    </div>
                     <input type="password" id="auth-password" required class="admin-input !bg-white/50 focus:!bg-white"
                         placeholder="••••••••">
                 </div>
@@ -657,6 +696,57 @@
                         class="text-gold-luxe font-black uppercase tracking-widest ml-1 hover:underline">Create
                         One</button>
                 </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- USER MENU MODAL (For Customers) -->
+    <div id="user-menu-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center px-6">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-md" onclick="toggleUserMenuModal()"></div>
+        <div class="relative w-full max-w-sm glass-panel p-8 rounded-[2rem] shadow-2xl fade-in">
+            <button onclick="toggleUserMenuModal()" class="absolute top-6 right-6 text-black/40 hover:text-black">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="text-center mb-8">
+                <div
+                    class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gold-luxe mx-auto mb-4 border border-black/5 shadow-inner">
+                    <i class="fa-solid fa-user text-3xl"></i>
+                </div>
+                <h2 id="user-menu-name" class="text-xl font-serif italic text-[#333333] mb-1">Customer Name</h2>
+                <p id="user-menu-email" class="text-[10px] font-bold uppercase tracking-widest text-black/40">
+                    customer@email.com</p>
+                <p id="user-menu-mobile" class="text-[9px] font-medium text-black/30 mt-1">+971 00 000 0000</p>
+            </div>
+
+            <div class="space-y-3">
+                <button id="admin-dashboard-link" onclick="showAdminPanel(); toggleUserMenuModal();"
+                    class="hidden w-full py-4 bg-gold-luxe text-white rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-gold-luxe/20 active:scale-95 transition-all">
+                    Merchant Dashboard
+                </button>
+                <button onclick="handleLogout()"
+                    class="w-full py-4 bg-gray-50 text-red-500 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] border border-red-100 active:scale-95 transition-all">
+                    Sign Out
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GUEST WISHLIST MODAL (Admin View) -->
+    <div id="guest-wishlist-modal" class="hidden fixed inset-0 z-[160] flex items-center justify-center px-6">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-md" onclick="toggleGuestWishlistModal()"></div>
+        <div
+            class="relative w-full max-w-lg glass-panel p-8 rounded-[2rem] shadow-2xl fade-in max-h-[80vh] flex flex-col">
+            <button onclick="toggleGuestWishlistModal()" class="absolute top-6 right-6 text-black/40 hover:text-black">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="mb-8">
+                <h2 id="guest-wishlist-title" class="text-xl font-serif italic text-[#333333] mb-1">Customer's Favorites
+                </h2>
+                <p class="text-[9px] font-black uppercase tracking-[0.2em] text-gold-luxe">Boutique Insights</p>
+            </div>
+
+            <div id="guest-wishlist-items" class="flex-1 overflow-y-auto space-y-4 no-scrollbar pr-2">
+                <!-- Products will be injected here -->
             </div>
         </div>
     </div>
