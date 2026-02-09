@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-import { getFirestore, collection, getDocs, addDoc, doc, deleteDoc, updateDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, addDoc, doc, deleteDoc, updateDoc, getDoc, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -9,6 +9,15 @@ const firebaseConfig = {
     storageBucket: "laszon-uae-catalogue.firebasestorage.app",
     messagingSenderId: "1070868763766",
     appId: "1:1070868763766:web:e5d9525b0baccb2eb3fb57"
+};
+
+// Scroll Category Helper
+window.scrollCategories = (dir) => {
+    const row = document.getElementById('category-row');
+    if (row) {
+        const scrollAmount = 300;
+        row.scrollBy({ left: dir * scrollAmount, behavior: 'smooth' });
+    }
 };
 
 const app = initializeApp(firebaseConfig);
@@ -1095,59 +1104,106 @@ window.copyUniversalJSON = () => {
 window.importData = (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    if (!confirm("This will add items from backup to current project. Continue?")) return;
+
+    // STRICT WARNING: DATA REPLACEMENT
+    if (!confirm("⚠️ WARNING: This will PERMANENTLY DELETE all existing Products & Categories and replace them with the backup data.\n\nAre you sure you want to continue?")) {
+        event.target.value = ''; // Reset
+        return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (e) => {
         try {
             const data = JSON.parse(e.target.result);
-            showToast("Restoring... Please Wait");
+            showToast("Clearing Database... ⏳");
 
-            // 1. Map old IDs to Names from the backup file
+            // HELPER: Batch Clear Collection (Robust)
+            const clearCol = async (colRef) => {
+                const snapshot = await getDocs(colRef);
+                if (snapshot.empty) return;
+
+                const batch = writeBatch(db);
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+            };
+
+            // 1. DELETE EXISTING DATA (Atomic Batch)
+            await clearCol(prodCol);
+            await clearCol(catCol);
+
+            // 2. CLEAR LOCAL CACHE
+            DATA.p = [];
+            DATA.c = [];
+
+            showToast("Restoring Backup... ♻️");
+
+            // TRACKER SETS TO PREVENT IN-FILE DUPLICATES
+            const addedCatNames = new Set();
+            const addedProdKeys = new Set();
+
+            // 3. RESTORE CATEGORIES
             const catOldIdToName = {};
             if (data.categories) {
                 data.categories.forEach(c => { if (c.id) catOldIdToName[c.id] = (c.name || "").trim(); });
             }
 
-            // 2. Handle/Create Categories & Build Name to New ID Map
             if (data.categories) {
+                // Batch add categories if possible, but let's stick to simple awaits for now unless >500
+                const catBatch = writeBatch(db);
+                let catCount = 0;
+
                 for (const cat of data.categories) {
                     const trimmedName = (cat.name || "").trim();
-                    const exists = DATA.c.find(c => c.name.trim() === trimmedName);
-                    if (!exists) {
-                        const cleanCat = { name: trimmedName, img: cat.img || cat.iconUrl || "img/" };
-                        const newDoc = await addDoc(catCol, cleanCat);
-                        // Add to a temp list so we can map right away
-                        DATA.c.push({ id: newDoc.id, ...cleanCat });
-                    }
+                    if (addedCatNames.has(trimmedName)) continue; // Skip duplicate category in file
+
+                    const cleanCat = { name: trimmedName, img: cat.img || cat.iconUrl || "img/" };
+                    const newRef = doc(catCol); // Auto-ID
+                    catBatch.set(newRef, cleanCat);
+
+                    DATA.c.push({ id: newRef.id, ...cleanCat });
+                    addedCatNames.add(trimmedName);
+                    catCount++;
                 }
+                if (catCount > 0) await catBatch.commit();
             }
 
-            // Build the final mapping: Trimmed Name -> Current/New ID
+            // Map Name -> New ID
             const nameToNewId = {};
             DATA.c.forEach(c => { nameToNewId[c.name.trim()] = c.id; });
 
-            // 3. Handle Products
+            // 4. RESTORE PRODUCTS
             if (data.products) {
+                const prodBatch = writeBatch(db);
+                let prodCount = 0;
+                // Note: Firestore batch limit is 500. If user has > 500, we need chunks.
+                // For safety, let's just do sequential addDoc for products if > 400 to avoid complex chunking logic here,
+                // OR use chunks. Given the boutique nature, < 500 is likely.
+                // Let's implement robust chunking for products.
+
+                const batches = [];
+                let currentBatch = writeBatch(db);
+                let currentBatchCount = 0;
+
                 for (const p of data.products) {
-                    // Find the NEW Category ID
+                    // RESOLVE CATEGORY ID
                     let finalCatId = "";
                     const oldCatName = catOldIdToName[p.catId];
                     if (oldCatName && nameToNewId[oldCatName]) {
                         finalCatId = nameToNewId[oldCatName];
                     } else if (p.catId && nameToNewId[p.catId]) {
-                        // Fallback if catId in backup was already a name or matches exactly
                         finalCatId = nameToNewId[p.catId];
                     }
 
                     const pImg = (p.images && p.images[0]) || p.img || "img/";
+                    // Unique Key: Name + CatID + Image + Price + Stock (Minimal Dedupe)
+                    const uniqueKey = `${p.name}-${finalCatId}-${pImg}-${p.price}-${p.inStock}`;
 
-                    // Refined Duplicate Check (Name + Category + Primary Image)
-                    const isDuplicate = DATA.p.some(ep =>
-                        ep.name === p.name &&
-                        ep.catId === finalCatId &&
-                        (ep.img === pImg)
-                    );
-                    if (isDuplicate) continue;
+                    if (addedProdKeys.has(uniqueKey)) continue; // Skip EXACT duplicate in file
+
+                    // Progress Indicator (every 50 items)
+                    if (currentBatchCount % 50 === 0) showToast(`Restoring... ${currentBatchCount + (batches.length * 450)} items`);
 
                     const cleanProd = {
                         name: p.name || "",
@@ -1171,14 +1227,28 @@ window.importData = (event) => {
                         cleanProd.img3 = p.img3 || "img/";
                     }
 
-                    await addDoc(prodCol, cleanProd);
+                    const newRef = doc(prodCol);
+                    currentBatch.set(newRef, cleanProd);
+                    addedProdKeys.add(uniqueKey);
+
+                    currentBatchCount++;
+                    if (currentBatchCount >= 450) { // Safety margin below 500
+                        batches.push(currentBatch.commit());
+                        currentBatch = writeBatch(db);
+                        currentBatchCount = 0;
+                    }
                 }
+                if (currentBatchCount > 0) batches.push(currentBatch.commit());
+
+                await Promise.all(batches);
             }
-            showToast("Restore Successful!");
+            showToast("Restore Complete! ✅");
+            event.target.value = '';
             refreshData();
         } catch (err) {
             console.error(err);
-            showToast("Import Failed");
+            showToast("Import Failed ❌");
+            event.target.value = '';
         }
     };
     reader.readAsText(file);
@@ -1364,8 +1434,8 @@ function renderHeroSlider() {
     if (banners.length === 0) {
         container.innerHTML = `
             <div class="hero-slide">
-                <img src="https://images.unsplash.com/photo-1549465220-1a8b9238cd48?q=80&w=1000&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover">
-                <div class="absolute inset-0 bg-gradient-to-r from-[#8b6c31]/70 via-[#8b6c31]/20 to-transparent flex flex-col justify-center px-8 md:px-16">
+                <img src="https://images.unsplash.com/photo-1549465220-1a8b9238cd48?q=80&w=1000&auto=format&fit=crop" class="w-full h-auto block relative object-cover">
+                <div class="absolute inset-0 flex flex-col justify-center px-8 md:px-16">
                     <h2 class="text-white text-3xl md:text-5xl font-serif italic mb-2 tracking-wide">The Art of Gifting</h2>
                     <p class="text-white/80 text-[10px] md:text-xs font-black uppercase tracking-[0.3em] mb-8">Discover our Exclusive Collection</p>
                 </div>
@@ -1377,8 +1447,8 @@ function renderHeroSlider() {
 
     container.innerHTML = `<div class="hero-slider">` + banners.map(b => `
         <div class="hero-slide">
-            <img src="${getOptimizedUrl(b.img, 'w_1200,c_fill,f_auto,q_auto')}" class="absolute inset-0 w-full h-full object-cover brightness-90">
-            <div class="absolute inset-0 bg-gradient-to-r from-[#8b6c31]/60 via-[#8b6c31]/10 to-transparent flex flex-col justify-center px-8 md:px-16">
+            <img src="${getOptimizedUrl(b.img, 'w_1200,c_fill,f_auto,q_auto')}" class="w-full h-auto block relative object-cover">
+            <div class="absolute inset-0 flex flex-col justify-center px-8 md:px-16">
                 <h2 class="text-white text-3xl md:text-5xl font-serif italic mb-2 tracking-wide">${b.title || ""}</h2>
                 <p class="text-white/80 text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">${b.subtitle || ""}</p>
             </div>

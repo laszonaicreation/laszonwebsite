@@ -1161,12 +1161,14 @@ nav {
     width: 100%;
     position: relative;
     scroll-snap-align: start;
-    height: 140px;
+    height: auto;
+    min-height: 140px;
 }
 
 @media (min-width: 768px) {
     .hero-slide {
-        height: 250px;
+        height: auto;
+        min-height: 250px;
     }
 }
 

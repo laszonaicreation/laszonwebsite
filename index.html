@@ -218,10 +218,22 @@
         </div>
 
         <!-- 4. CATEGORY ROW -->
-        <div class="mb-4 fade-in">
+        <div class="mb-4 fade-in relative group px-2 md:px-4">
+            <!-- Left Scroll Button (Desktop) -->
+            <button onclick="scrollCategories(-1)"
+                class="hidden md:flex absolute left-0 top-[60px] -translate-y-1/2 z-30 bg-white/90 w-10 h-10 rounded-full shadow-lg hover:bg-white hover:scale-110 transition-all -ml-3 opacity-0 group-hover:opacity-100 items-center justify-center border border-gray-100 text-gray-700 backdrop-blur-sm cursor-pointer">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+
             <div id="category-row"
-                class="category-row no-scrollbar flex gap-2.5 overflow-x-auto pt-4 pb-12 items-center border-none px-1 scroll-smooth">
+                class="category-row no-scrollbar flex gap-3 md:gap-5 overflow-x-auto pt-4 pb-12 items-center border-none px-1 scroll-smooth snap-x snap-mandatory">
             </div>
+
+            <!-- Right Scroll Button (Desktop) -->
+            <button onclick="scrollCategories(1)"
+                class="hidden md:flex absolute right-0 top-[60px] -translate-y-1/2 z-30 bg-white/90 w-10 h-10 rounded-full shadow-lg hover:bg-white hover:scale-110 transition-all -mr-3 opacity-0 group-hover:opacity-100 items-center justify-center border border-gray-100 text-gray-700 backdrop-blur-sm cursor-pointer">
+                <i class="fa-solid fa-chevron-right"></i>
+            </button>
         </div>
 
         <div id="selection-header" class="hidden mb-12 fade-in">
